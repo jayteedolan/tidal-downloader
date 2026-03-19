@@ -1,0 +1,30 @@
+name: Deploy to Pi
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 10
+
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /home/jtdolan/Projects/tidal-downloader
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Install dependencies
+        run: |
+          /home/jtdolan/Projects/tidal-downloader/.venv/bin/pip install -r             /home/jtdolan/Projects/tidal-downloader/requirements.txt
+
+      - name: Restart service
+        run: sudo systemctl restart tidal-downloader
+
+      - name: Verify service is running
+        run: |
+          sleep 3
+          systemctl is-active --quiet tidal-downloader             && echo 'Service is active'             || (journalctl -u tidal-downloader -n 30 --no-pager; exit 1)
