@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tidal Downloader</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="icon" href="/static/favicon.ico" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="container" x-data="musicApp()" x-cloak>
+
+    <header>
+      <h1>Tidal <span>Downloader</span></h1>
+    </header>
+
+    <!-- Step indicator -->
+    <div class="steps">
+      <template x-for="n in [1,2,3,4,5]" :key="n">
+        <div class="step-indicator"
+             :class="{ active: step === n, done: step > n }">
+          <span x-show="step > n">✓ </span>
+          <span x-text="stepLabel(n)"></span>
+        </div>
+      </template>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         STEP 1 — Tidal Album Search
+    ══════════════════════════════════════════════════════════ -->
+    <div x-show="step === 1">
+
+      <!-- URL resolver -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Resolve from URL (optional)</div>
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group" style="flex:3">
+            <label>Tidal, Spotify, or Apple Music album URL</label>
+            <input type="url" x-model="urlInput"
+                   placeholder="https://open.spotify.com/album/…"
+                   @keydown.enter="resolveUrl" />
+          </div>
+          <button class="btn-primary" @click="resolveUrl"
+                  :disabled="urlLoading || !urlInput.trim()">
+            <span x-show="urlLoading"><span class="spinner"></span></span>
+            <span x-show="!urlLoading">Resolve</span>
+          </button>
+        </div>
+        <div class="alert alert-error" x-show="urlError" x-text="urlError"></div>
+      </div>
+
+      <!-- Text search -->
+      <div class="card">
+        <div class="card-title">Search by Artist &amp; Album</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Artist</label>
+            <input type="text" x-model="searchArtist" placeholder="e.g. Radiohead"
+                   @keydown.enter="searchTidal" />
+          </div>
+          <div class="form-group">
+            <label>Album</label>
+            <input type="text" x-model="searchAlbum" placeholder="e.g. OK Computer"
+                   @keydown.enter="searchTidal" />
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button class="btn-primary" @click="searchTidal"
+                    :disabled="searchLoading || (!searchArtist && !searchAlbum)">
+              <span x-show="searchLoading"><span class="spinner"></span></span>
+              <span x-show="!searchLoading">Search</span>
+            </button>
+          </div>
+        </div>
+        <div class="alert alert-error" x-show="searchError" x-text="searchError"></div>
+      </div>
+
+      <!-- Results -->
+      <div x-show="searchResults.length > 0" style="margin-top:16px">
+        <div class="section-header">
+          <div class="section-title">Pick an album</div>
+          <span class="text-muted text-sm" x-text="`${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}`"></span>
+        </div>
+        <div class="album-grid">
+          <template x-for="album in searchResults" :key="album.id">
+            <div class="album-card"
+                 :class="{ selected: selectedAlbum && selectedAlbum.id === album.id }"
+                 @click="selectAlbum(album)">
+              <img :src="album.cover_url || ''" :alt="album.title"
+                   onerror="this.style.display='none'" />
+              <div class="album-title" x-text="album.title"></div>
+              <div class="album-artist" x-text="album.artist"></div>
+              <div class="album-meta">
+                <span class="badge" :class="qualityBadgeClass(album.quality)"
+                      x-text="album.quality || 'FLAC'"></span>
+                <span class="badge badge-tracks" x-show="album.year" x-text="album.year"></span>
+                <span class="badge badge-tracks" x-show="album.track_count"
+                      x-text="`${album.track_count} tracks`"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+    </div><!-- /step 1 -->
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STEP 2 — Track Selection
+    ══════════════════════════════════════════════════════════ -->
+    <div x-show="step === 2">
+      <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
+        <button class="btn-secondary" @click="step = 1">← Back</button>
+        <span class="text-muted text-sm">
+          Select tracks to download from
+          <strong x-text="selectedAlbum?.artist"></strong> —
+          <strong x-text="selectedAlbum?.title"></strong>
+        </span>
+      </div>
+
+      <div class="track-selection-list">
+        <!-- Select All header row -->
+        <div class="track-select-row track-select-header" @click="toggleAllTracks()">
+          <input type="checkbox"
+                 :checked="allTracksSelected"
+                 :indeterminate="someTracksSelected"
+                 @click.stop="toggleAllTracks()"
+                 class="track-checkbox" />
+          <span class="track-select-label">Select All</span>
+          <span class="text-muted text-sm" style="margin-left:auto"
+                x-text="`${selectedTrackIds.length} of ${albumDetail?.tracks?.length ?? 0} selected`"></span>
+        </div>
+
+        <!-- Individual track rows -->
+        <template x-for="t in (albumDetail?.tracks || [])" :key="t.id">
+          <div class="track-select-row"
+               :class="{ selected: selectedTrackIds.includes(t.id) }"
+               @click="toggleTrack(t.id)">
+            <input type="checkbox"
+                   :checked="selectedTrackIds.includes(t.id)"
+                   @click.stop="toggleTrack(t.id)"
+                   class="track-checkbox" />
+            <span class="track-select-num text-muted" x-text="trackDisplayNum(t)"></span>
+            <span class="track-select-label" x-text="t.title"></span>
+          </div>
+        </template>
+      </div>
+
+      <div style="margin-top:18px;display:flex;align-items:center;gap:12px">
+        <button class="btn-primary"
+                :disabled="!selectedTrackIds.length"
+                @click="confirmTrackSelection()">
+          Continue →
+        </button>
+        <span x-show="!selectedTrackIds.length" class="text-muted text-sm">
+          Select at least one track to continue.
+        </span>
+      </div>
+    </div><!-- /step 2 -->
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STEP 3 — MusicBrainz Release Selection
+    ══════════════════════════════════════════════════════════ -->
+    <div x-show="step === 3">
+      <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
+        <button class="btn-secondary" @click="step = 2">← Back</button>
+        <span class="text-muted text-sm">
+          Searching MusicBrainz for
+          <strong x-text="selectedAlbum?.artist"></strong> —
+          <strong x-text="selectedAlbum?.title"></strong>
+        </span>
+      </div>
+
+      <div x-show="mbLoading" class="empty-state">
+        <span class="spinner"></span> Searching MusicBrainz…
+      </div>
+
+      <div class="alert alert-error" x-show="mbError" x-text="mbError"></div>
+
+      <div x-show="!mbLoading && mbResults.length > 0">
+        <div class="section-header">
+          <div class="section-title">Pick a MusicBrainz release</div>
+          <span class="text-muted text-sm" x-text="`${mbResults.length} match${mbResults.length !== 1 ? 'es' : ''}`"></span>
+        </div>
+        <div class="release-list">
+          <template x-for="r in mbResults" :key="r.id">
+            <div class="release-row"
+                 :class="{ selected: selectedRelease && selectedRelease.id === r.id }"
+                 @click="selectRelease(r)">
+              <div style="flex:1">
+                <div class="release-title" x-text="r.title"></div>
+                <div class="release-meta" x-text="mbMeta(r)"></div>
+              </div>
+              <div class="release-badges">
+                <span class="badge badge-digital" x-show="r.format === 'Digital Media'">Digital Media</span>
+                <span class="badge badge-tracks" x-show="r.release_type" x-text="r.release_type"></span>
+                <span class="badge badge-tracks" x-show="r.track_count" x-text="`${r.track_count} tracks`"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div x-show="!mbLoading && !mbResults.length && !mbError" class="empty-state">
+        No results yet.
+      </div>
+    </div><!-- /step 3 -->
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STEP 4 — Destination Folder
+    ══════════════════════════════════════════════════════════ -->
+    <div x-show="step === 4">
+      <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
+        <button class="btn-secondary" @click="step = 3">← Back</button>
+        <span class="text-muted text-sm">Choose or create a destination artist folder</span>
+      </div>
+
+      <!-- Folder search input -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group">
+            <label>Search artist folders</label>
+            <input type="text" x-model="folderQuery"
+                   placeholder="Artist name…"
+                   @keydown.enter="searchFolders" />
+          </div>
+          <button class="btn-primary" @click="searchFolders"
+                  :disabled="folderLoading || !folderQuery.trim()">
+            <span x-show="folderLoading"><span class="spinner"></span></span>
+            <span x-show="!folderLoading">Search</span>
+          </button>
+        </div>
+        <div class="alert alert-error" x-show="folderError" x-text="folderError"></div>
+      </div>
+
+      <div x-show="folderLoading" class="empty-state"><span class="spinner"></span> Searching…</div>
+
+      <div x-show="!folderLoading">
+        <div class="folder-list">
+          <!-- Existing matches -->
+          <template x-for="f in folderResults" :key="f.full_path">
+            <div class="folder-row"
+                 :class="{ selected: selectedFolder && selectedFolder.full_path === f.full_path }"
+                 @click="selectFolder(f)">
+              <div>
+                <div class="folder-name" x-text="f.name"></div>
+                <div class="text-sm text-muted" x-text="f.full_path"></div>
+              </div>
+              <div class="folder-score" x-text="`${f.score}% match`"></div>
+            </div>
+          </template>
+
+          <!-- Create new option -->
+          <div class="folder-row folder-new"
+               :class="{ selected: createNewFolder }"
+               @click="selectNewFolder()">
+            <div style="flex:1">
+              <div class="folder-name">+ Create new folder</div>
+              <div x-show="createNewFolder" style="margin-top:8px" @click.stop>
+                <input type="text" x-model="newFolderName"
+                       placeholder="New folder name…"
+                       style="width:100%;max-width:340px" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div x-show="folderResults.length === 0 && !folderLoading && !folderError"
+             class="empty-state" style="padding:20px">
+          No matching folders found. Use "Create new folder" above.
+        </div>
+
+        <div style="margin-top:18px">
+          <button class="btn-primary"
+                  :disabled="!selectedFolder && !(createNewFolder && newFolderName.trim())"
+                  @click="confirmFolder()">
+            Confirm Destination →
+          </button>
+        </div>
+      </div>
+    </div><!-- /step 4 -->
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         STEP 5 — Confirm & Download
+    ══════════════════════════════════════════════════════════ -->
+    <div x-show="step === 5">
+      <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
+        <button class="btn-secondary" @click="step = 4" :disabled="downloading">← Back</button>
+      </div>
+
+      <!-- Summary -->
+      <div x-show="!downloadComplete">
+        <div class="summary-grid" style="margin-bottom:16px">
+          <div class="summary-block">
+            <div class="summary-label">Tidal Album</div>
+            <div class="summary-value" x-text="selectedAlbum?.title"></div>
+            <div class="summary-sub" x-text="selectedAlbum?.artist"></div>
+          </div>
+          <div class="summary-block">
+            <div class="summary-label">MusicBrainz Release</div>
+            <div class="summary-value" x-text="selectedRelease?.title"></div>
+            <div class="summary-sub" x-text="mbMeta(selectedRelease || {})"></div>
+          </div>
+          <div class="summary-block">
+            <div class="summary-label">Destination</div>
+            <div class="summary-value" x-text="destDescription"></div>
+            <div class="summary-sub" x-text="`Album folder: ${albumFolderPreview}`"></div>
+          </div>
+          <div class="summary-block">
+            <div class="summary-label">Tracks to download</div>
+            <div class="summary-value" x-text="`${selectedTrackIds.length} of ${albumDetail?.tracks?.length ?? selectedAlbum?.track_count ?? '?'} tracks`"></div>
+            <div class="summary-sub" x-text="selectedAlbum?.quality || 'FLAC'"></div>
+          </div>
+        </div>
+
+        <div class="alert alert-error" x-show="downloadError" x-text="downloadError"></div>
+
+        <button class="btn-primary" style="margin-bottom:20px"
+                :disabled="downloading || !canDownload"
+                @click="startDownload()">
+          <span x-show="downloading"><span class="spinner"></span> Downloading…</span>
+          <span x-show="!downloading">Start Download</span>
+        </button>
+
+        <!-- Overwrite confirmation -->
+        <div x-show="overwriteNeeded" class="overwrite-modal">
+          <div class="overwrite-card">
+            <div class="overwrite-title">Folder already exists</div>
+            <p style="margin-bottom:10px;color:var(--text-muted);font-size:0.88rem">
+              This album folder already contains files:
+            </p>
+            <div class="overwrite-path" x-text="overwritePath"></div>
+            <p style="margin:14px 0 18px;font-size:0.88rem">Overwrite the existing files?</p>
+            <div style="display:flex;gap:10px">
+              <button class="btn-secondary" @click="cancelOverwrite()">Cancel</button>
+              <button class="btn-primary" @click="confirmOverwrite()">Yes, overwrite</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Track progress -->
+        <div x-show="trackStatuses.length > 0">
+          <div class="card-title" style="margin-bottom:10px">Track progress</div>
+          <div class="progress-list">
+            <template x-for="t in trackStatuses" :key="t.track_num">
+              <div class="progress-row">
+                <span class="track-num" x-text="t.display_num ?? t.track_num"></span>
+                <span class="track-title" x-text="t.title"></span>
+                <span class="status-icon" :class="statusClass(t.status)"
+                      x-text="statusIcon(t.status)"></span>
+                <span x-show="t.error" class="text-sm"
+                      style="color:var(--red)" x-text="t.error"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Complete banner -->
+      <div class="complete-banner" x-show="downloadComplete">
+        <div class="complete-icon">✓</div>
+        <h2>Download complete!</h2>
+        <p x-text="`${selectedTrackIds.length} tracks saved · Plex library scan triggered`"></p>
+        <div style="margin-top:20px">
+          <button class="btn-primary" @click="resetAll()">Download another album</button>
+        </div>
+      </div>
+
+    </div><!-- /step 5 -->
+
+  </div><!-- /container -->
+
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

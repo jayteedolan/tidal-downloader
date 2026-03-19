@@ -1,0 +1,15 @@
+[Unit]
+Description=Tidal Music Downloader
+After=network.target
+
+[Service]
+Type=simple
+User=jtdolan
+WorkingDirectory=/home/jtdolan/Projects/tidal-downloader
+EnvironmentFile=/home/jtdolan/Projects/tidal-downloader/.env
+ExecStart=/home/jtdolan/Projects/tidal-downloader/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8766
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
