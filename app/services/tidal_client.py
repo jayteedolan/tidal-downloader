@@ -58,6 +58,7 @@ def _parse_album(data: dict) -> AlbumResult:
         year=year,
         quality=quality,
         track_count=data.get("numberOfTracks"),
+        explicit=bool(data.get("explicit", False)),
     )
 
 

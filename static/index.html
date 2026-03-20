@@ -93,6 +93,7 @@
               <div class="album-meta">
                 <span class="badge" :class="qualityBadgeClass(album.quality)"
                       x-text="album.quality || 'FLAC'"></span>
+                <span class="badge badge-explicit" x-show="album.explicit">E</span>
                 <span class="badge badge-tracks" x-show="album.year" x-text="album.year"></span>
                 <span class="badge badge-tracks" x-show="album.track_count"
                       x-text="`${album.track_count} tracks`"></span>

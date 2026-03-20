@@ -12,6 +12,7 @@ class AlbumResult(BaseModel):
     year: Optional[str] = None
     quality: str = "LOSSLESS"
     track_count: Optional[int] = None
+    explicit: bool = False
 
 
 class TrackInfo(BaseModel):

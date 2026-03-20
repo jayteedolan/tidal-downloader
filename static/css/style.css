@@ -169,6 +169,7 @@ header h1 span { color: var(--accent); }
 .badge-hires { background: rgba(108, 99, 255, 0.2); color: #a09aff; }
 .badge-tracks { background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); }
 .badge-digital { background: rgba(33, 150, 243, 0.18); color: #64b5f6; border: 1px solid rgba(33, 150, 243, 0.35); }
+.badge-explicit { background: rgba(224, 85, 85, 0.15); color: var(--red); border: 1px solid rgba(224, 85, 85, 0.3); }
 
 /* ── Release list ───────────────────────────────────────────── */
 .release-list { display: flex; flex-direction: column; gap: 8px; }
