@@ -13,6 +13,7 @@ class AlbumResult(BaseModel):
     quality: str = "LOSSLESS"
     track_count: Optional[int] = None
     explicit: bool = False
+    release_type: str = "ALBUM"   # "ALBUM" | "SINGLE" | "EP"
 
 
 class TrackInfo(BaseModel):
