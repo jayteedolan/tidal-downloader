@@ -1,6 +1,7 @@
 import base64
 import re
 import xml.etree.ElementTree as ET
+from typing import Optional
 from pathlib import Path
 import httpx
 from ..models import TrackStream
@@ -129,7 +130,7 @@ def _parse_mpd(manifest_text: str) -> tuple[str, list[str]]:
     return init_url, segment_urls
 
 
-def _parse_iso8601_duration(duration: str | None) -> float:
+def _parse_iso8601_duration(duration: Optional[str]) -> float:
     if not duration:
         return 0.0
     m = re.match(

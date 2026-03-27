@@ -85,8 +85,8 @@ def _parse_track(item: dict) -> TrackInfo:
     )
 
 
-async def _get(path: str, params: dict | None = None) -> dict:
-    last_error: Exception | None = None
+async def _get(path: str, params: Optional[dict] = None) -> dict:
+    last_error: Optional[Exception] = None
     async with httpx.AsyncClient(headers=HEADERS, timeout=TIMEOUT, follow_redirects=True) as client:
         for host in TIDAL_HOSTS:
             url = f"https://{host}{path}"

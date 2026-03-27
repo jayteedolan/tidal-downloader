@@ -1,5 +1,6 @@
 import re
 import shutil
+from typing import Optional
 from pathlib import Path
 
 _ILLEGAL_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -12,14 +13,14 @@ def sanitize_filename(name: str) -> str:
     return name.strip() or "Unknown"
 
 
-def album_folder_path(artist_folder: str, album_title: str, year: str | None) -> Path:
+def album_folder_path(artist_folder: str, album_title: str, year: Optional[str]) -> Path:
     folder_name = sanitize_filename(album_title)
     if year:
         folder_name = f"{folder_name} ({year})"
     return Path(artist_folder) / folder_name
 
 
-def create_album_folder(artist_folder: str, album_title: str, year: str | None) -> Path:
+def create_album_folder(artist_folder: str, album_title: str, year: Optional[str]) -> Path:
     album_path = album_folder_path(artist_folder, album_title, year)
     album_path.mkdir(parents=True, exist_ok=True)
     return album_path

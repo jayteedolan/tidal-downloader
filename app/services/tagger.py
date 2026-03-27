@@ -1,4 +1,5 @@
 import httpx
+from typing import Optional
 from pathlib import Path
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import PictureType
@@ -7,7 +8,7 @@ from ..models import TrackMetadata
 TIMEOUT = httpx.Timeout(20.0, connect=8.0)
 
 
-async def _fetch_cover(url: str) -> bytes | None:
+async def _fetch_cover(url: str) -> Optional[bytes]:
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
             resp = await client.get(url)

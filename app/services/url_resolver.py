@@ -1,5 +1,6 @@
 import re
 import httpx
+from typing import Optional
 from urllib.parse import quote
 from ..models import UrlResolveResult
 
@@ -26,7 +27,7 @@ def _detect_platform(url: str) -> str:
     return "unknown"
 
 
-def _extract_tidal_album_id(url: str) -> int | None:
+def _extract_tidal_album_id(url: str) -> Optional[int]:
     m = TIDAL_ALBUM_RE.search(url)
     if m:
         return int(m.group(1))
