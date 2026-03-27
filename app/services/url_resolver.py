@@ -24,6 +24,8 @@ def _detect_platform(url: str) -> str:
         return "spotify"
     if "music.apple.com" in url_lower:
         return "apple"
+    if "qobuz.com" in url_lower:
+        return "qobuz"
     return "unknown"
 
 
@@ -48,7 +50,7 @@ async def resolve_url(url: str) -> UrlResolveResult:
             source_platform="tidal",
         )
 
-    if platform in ("spotify", "apple"):
+    if platform in ("spotify", "apple", "qobuz"):
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
             resp = await client.get(
                 ODESLI_API,
@@ -77,4 +79,4 @@ async def resolve_url(url: str) -> UrlResolveResult:
 
         raise ValueError("Could not find a Tidal album match via Odesli for this URL.")
 
-    raise ValueError(f"Unsupported URL platform. Please provide a Tidal, Spotify, or Apple Music album URL.")
+    raise ValueError(f"Unsupported URL platform. Please provide a Tidal, Spotify, Apple Music, or Qobuz album URL.")
