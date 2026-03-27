@@ -79,10 +79,20 @@
       <div x-show="searchResults.length > 0" style="margin-top:16px">
         <div class="section-header">
           <div class="section-title">Pick an album</div>
-          <span class="text-muted text-sm" x-text="`${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}`"></span>
+          <span class="text-muted text-sm" x-text="`${filteredSearchResults.length} result${filteredSearchResults.length !== 1 ? 's' : ''}`"></span>
+        </div>
+        <div class="search-tabs">
+          <button class="tab-btn" :class="{ active: activeSearchTab === 'albums' }"
+                  @click="activeSearchTab = 'albums'">
+            Albums (<span x-text="albumCount"></span>)
+          </button>
+          <button class="tab-btn" :class="{ active: activeSearchTab === 'singles' }"
+                  @click="activeSearchTab = 'singles'">
+            Singles (<span x-text="singleCount"></span>)
+          </button>
         </div>
         <div class="album-grid">
-          <template x-for="album in searchResults" :key="album.id">
+          <template x-for="album in filteredSearchResults" :key="album.id">
             <div class="album-card"
                  :class="{ selected: selectedAlbum && selectedAlbum.id === album.id }"
                  @click="selectAlbum(album)">
@@ -94,12 +104,17 @@
                 <span class="badge" :class="qualityBadgeClass(album.quality)"
                       x-text="album.quality || 'FLAC'"></span>
                 <span class="badge badge-explicit" x-show="album.explicit">E</span>
+                <span class="badge ep-badge" x-show="album.release_type === 'EP'">EP</span>
                 <span class="badge badge-tracks" x-show="album.year" x-text="album.year"></span>
                 <span class="badge badge-tracks" x-show="album.track_count"
                       x-text="`${album.track_count} tracks`"></span>
               </div>
             </div>
           </template>
+          <div class="empty-state"
+               x-show="filteredSearchResults.length === 0 && searchResults.length > 0">
+            No <span x-text="activeSearchTab"></span> found for this search.
+          </div>
         </div>
       </div>
 
