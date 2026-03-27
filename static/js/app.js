@@ -15,6 +15,7 @@ function musicApp() {
     searchError: '',
     searchResults: [],
     selectedAlbum: null,
+    activeSearchTab: 'albums',   // 'albums' | 'singles'
     albumDetail: null,
 
     // ── Step 2: Track selection ───────────────────────────────────
@@ -71,6 +72,25 @@ function musicApp() {
       return `status-${s || 'queued'}`;
     },
 
+    get filteredSearchResults() {
+      if (this.activeSearchTab === 'albums') {
+        return this.searchResults.filter(a =>
+          a.release_type === 'ALBUM' || a.release_type === 'EP'
+        );
+      }
+      return this.searchResults.filter(a => a.release_type === 'SINGLE');
+    },
+
+    get albumCount() {
+      return this.searchResults.filter(a =>
+        a.release_type === 'ALBUM' || a.release_type === 'EP'
+      ).length;
+    },
+
+    get singleCount() {
+      return this.searchResults.filter(a => a.release_type === 'SINGLE').length;
+    },
+
     // ── URL resolve ───────────────────────────────────────────────
 
     async resolveUrl() {
@@ -124,6 +144,7 @@ function musicApp() {
       this.searchError = '';
       this.searchResults = [];
       this.selectedAlbum = null;
+      this.activeSearchTab = 'albums';
       try {
         const res = await fetch(`/api/tidal/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();
@@ -436,6 +457,7 @@ function musicApp() {
       this.searchArtist = '';
       this.searchAlbum = '';
       this.searchResults = [];
+      this.activeSearchTab = 'albums';
       this.searchError = '';
       this.selectedAlbum = null;
       this.albumDetail = null;
