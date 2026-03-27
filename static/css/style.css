@@ -548,3 +548,40 @@ button {
   color: var(--text-muted);
   word-break: break-all;
 }
+
+/* ── Search tabs ────────────────────────────────────────────── */
+.search-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.tab-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.tab-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── EP badge ───────────────────────────────────────────────── */
+.ep-badge {
+  background: rgba(224, 168, 85, 0.18);
+  color: var(--yellow);
+  border: 1px solid rgba(224, 168, 85, 0.35);
+}
