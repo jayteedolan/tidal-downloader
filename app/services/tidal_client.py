@@ -50,6 +50,16 @@ def _parse_album(data: dict) -> AlbumResult:
     elif quality == "LOSSLESS":
         quality = "FLAC"
 
+    release_type = (
+        data.get("type")
+        or data.get("albumType")
+        or "ALBUM"
+    ).upper()
+    logger.debug(
+        "Album %s raw type=%r albumType=%r → %s",
+        data.get("id"), data.get("type"), data.get("albumType"), release_type,
+    )
+
     return AlbumResult(
         id=data["id"],
         title=data.get("title", ""),
@@ -59,6 +69,7 @@ def _parse_album(data: dict) -> AlbumResult:
         quality=quality,
         track_count=data.get("numberOfTracks"),
         explicit=bool(data.get("explicit", False)),
+        release_type=release_type,
     )
 
 
