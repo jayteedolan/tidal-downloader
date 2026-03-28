@@ -27,6 +27,9 @@ function musicApp() {
     mbResults: [],
     selectedRelease: null,
 
+    // ── Step 2: Album detail loading ──────────────────────────────
+    albumDetailLoading: false,
+
     // ── Step 4: Folder ───────────────────────────────────────────
     folderQuery: '',
     folderLoading: false,
@@ -161,22 +164,32 @@ function musicApp() {
     async selectAlbum(album, detail = null) {
       this.selectedAlbum = album;
       this.albumDetail = detail;
-      if (!detail) {
-        try {
-          const res = await fetch(`/api/tidal/album/${album.id}`);
-          const d = await res.json();
-          if (res.ok) this.albumDetail = d;
-        } catch (_) {}
-      }
-      // Pre-fill folder search with artist name
       this.folderQuery = album.artist || '';
       this.newFolderName = album.artist || '';
-      // Pre-select all tracks
-      this.selectedTrackIds = (this.albumDetail?.tracks || []).map(t => t.id);
-      // Advance to track selection step
+      this.selectedTrackIds = [];
       this.step = 2;
       // Kick off MB search in background so step 3 loads instantly
       this.searchMusicBrainz();
+
+      if (detail) {
+        this.selectedTrackIds = (detail.tracks || []).map(t => t.id);
+      } else {
+        // Load album detail with one automatic retry on failure/empty tracks
+        this.albumDetailLoading = true;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 1000));
+          try {
+            const res = await fetch(`/api/tidal/album/${album.id}`);
+            const d = await res.json();
+            if (res.ok && d.tracks?.length > 0) {
+              this.albumDetail = d;
+              this.selectedTrackIds = d.tracks.map(t => t.id);
+              break;
+            }
+          } catch (_) {}
+        }
+        this.albumDetailLoading = false;
+      }
     },
 
     // ── Step 2: Track selection ───────────────────────────────────
@@ -282,6 +295,13 @@ function musicApp() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Folder search failed');
         this.folderResults = data;
+        // Auto-select and skip to confirmation if there's a perfect name match
+        const perfect = data.find(f => f.score === 100);
+        if (perfect) {
+          this.selectedFolder = perfect;
+          this.createNewFolder = false;
+          this.step = 5;
+        }
       } catch (e) {
         this.folderError = e.message;
       } finally {
@@ -461,6 +481,7 @@ function musicApp() {
       this.searchError = '';
       this.selectedAlbum = null;
       this.albumDetail = null;
+      this.albumDetailLoading = false;
       this.selectedTrackIds = [];
       this.mbResults = [];
       this.mbError = '';

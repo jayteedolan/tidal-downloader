@@ -134,6 +134,11 @@
         </span>
       </div>
 
+      <div x-show="albumDetailLoading" class="empty-state">
+        <span class="spinner"></span> Loading tracks…
+      </div>
+
+      <div x-show="!albumDetailLoading">
       <div class="track-selection-list">
         <!-- Select All header row -->
         <div class="track-select-row track-select-header" @click="toggleAllTracks()">
@@ -161,14 +166,15 @@
           </div>
         </template>
       </div>
+      </div>
 
       <div style="margin-top:18px;display:flex;align-items:center;gap:12px">
         <button class="btn-primary"
-                :disabled="!selectedTrackIds.length"
+                :disabled="albumDetailLoading || !selectedTrackIds.length"
                 @click="confirmTrackSelection()">
           Continue →
         </button>
-        <span x-show="!selectedTrackIds.length" class="text-muted text-sm">
+        <span x-show="!albumDetailLoading && !selectedTrackIds.length" class="text-muted text-sm">
           Select at least one track to continue.
         </span>
       </div>
