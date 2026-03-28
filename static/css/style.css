@@ -363,6 +363,8 @@ button {
 @media (max-width: 560px) {
   .summary-grid { grid-template-columns: 1fr; }
   .album-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  /* Prevent iOS Safari from auto-zooming when focusing inputs */
+  input[type="text"], input[type="url"] { font-size: 16px; }
 }
 
 .summary-block {
