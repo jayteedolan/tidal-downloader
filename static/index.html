@@ -39,7 +39,7 @@
             <label>Tidal, Spotify, Apple Music, or Qobuz album URL</label>
             <input type="url" x-model="urlInput"
                    placeholder="https://open.spotify.com/album/…"
-                   @keydown.enter="resolveUrl" />
+                   @keyup.enter="resolveUrl" />
           </div>
           <button class="btn-primary" @click="resolveUrl"
                   :disabled="urlLoading || !urlInput.trim()">
@@ -57,12 +57,12 @@
           <div class="form-group">
             <label>Artist</label>
             <input type="text" x-model="searchArtist" placeholder="e.g. Radiohead"
-                   @keydown.enter="searchTidal" />
+                   @keyup.enter="searchTidal" />
           </div>
           <div class="form-group">
             <label>Album</label>
             <input type="text" x-model="searchAlbum" placeholder="e.g. OK Computer"
-                   @keydown.enter="searchTidal" />
+                   @keyup.enter="searchTidal" />
           </div>
           <div style="display:flex;align-items:flex-end">
             <button class="btn-primary" @click="searchTidal"
@@ -246,7 +246,7 @@
             <label>Search artist folders</label>
             <input type="text" x-model="folderQuery"
                    placeholder="Artist name…"
-                   @keydown.enter="searchFolders" />
+                   @keyup.enter="searchFolders" />
           </div>
           <button class="btn-primary" @click="searchFolders"
                   :disabled="folderLoading || !folderQuery.trim()">
