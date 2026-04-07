@@ -46,6 +46,19 @@ function musicApp() {
     trackStatuses: [],   // [{track_num, display_num, disc_num, title, status}]
     overwriteNeeded: false,
     overwritePath: '',
+    _activeJobId: null,
+    _es: null,
+
+    // ── Lifecycle ─────────────────────────────────────────────────
+
+    init() {
+      this._onVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && this._activeJobId) {
+          this._reconnectSSE();
+        }
+      };
+      document.addEventListener('visibilitychange', this._onVisibilityChange);
+    },
 
     // ── Helpers ───────────────────────────────────────────────────
 
@@ -432,23 +445,66 @@ function musicApp() {
       }
 
       // Connect SSE
+      this._activeJobId = jobId;
+      this._connectSSE(jobId);
+    },
+
+    _connectSSE(jobId) {
+      if (this._es) { this._es.close(); this._es = null; }
       const es = new EventSource(`/api/download/${jobId}/stream`);
-
+      this._es = es;
       es.addEventListener('progress', (e) => {
-        const msg = JSON.parse(e.data);
-        this._applyProgress(msg);
+        this._applyProgress(JSON.parse(e.data));
       });
-
       es.onerror = () => {
+        this._es = null;
         es.close();
-        this.downloading = false;
+        // If hidden: do nothing — visibilitychange will reconnect when user returns
+        // If visible and connection closed: probe to distinguish job-done from error
+        if (document.visibilityState === 'visible' && es.readyState === EventSource.CLOSED) {
+          this._handleSSEClosed();
+        }
       };
+    },
+
+    async _reconnectSSE() {
+      if (!this._activeJobId || !this.downloading) return;
+      await new Promise(r => setTimeout(r, 300)); // let iOS fully resume
+      this._connectSSE(this._activeJobId);
+    },
+
+    async _handleSSEClosed() {
+      if (!this._activeJobId) return;
+      try {
+        const res = await fetch(`/api/download/${this._activeJobId}/stream`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (res.status === 404) {
+          // Job completed while we were away
+          this.downloadComplete = true;
+          this.downloading = false;
+          this._cleanup();
+        } else if (res.ok) {
+          // Job still running — reconnect properly via EventSource
+          this._connectSSE(this._activeJobId);
+        } else {
+          this.downloadError = `Connection lost (HTTP ${res.status})`;
+          this.downloading = false;
+          this._cleanup();
+        }
+      } catch (_) { /* network error — visibilitychange will retry */ }
+    },
+
+    _cleanup() {
+      if (this._es) { this._es.close(); this._es = null; }
+      this._activeJobId = null;
     },
 
     _applyProgress(msg) {
       if (msg.status === 'complete') {
         this.downloadComplete = true;
         this.downloading = false;
+        this._cleanup();
         return;
       }
 
@@ -456,6 +512,7 @@ function musicApp() {
         // Top-level error
         this.downloadError = msg.error || 'Unknown error';
         this.downloading = false;
+        this._cleanup();
         return;
       }
 
@@ -471,6 +528,7 @@ function musicApp() {
 
     // ── Reset ─────────────────────────────────────────────────────
     resetAll() {
+      this._cleanup();
       this.step = 1;
       this.urlInput = '';
       this.urlError = '';

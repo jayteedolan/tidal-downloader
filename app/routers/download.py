@@ -21,6 +21,14 @@ router = APIRouter(prefix="/api/download", tags=["download"])
 
 # In-memory job store: job_id -> asyncio.Queue of DownloadProgress dicts
 _jobs: dict[str, asyncio.Queue] = {}
+# Completed jobs: job_id -> terminal event payload, kept for 30s after completion
+_completed_jobs: dict[str, dict] = {}
+
+
+async def _cleanup_job(job_id: str, delay: int = 30) -> None:
+    await asyncio.sleep(delay)
+    _jobs.pop(job_id, None)
+    _completed_jobs.pop(job_id, None)
 
 
 @router.post("", response_model=DownloadJobResponse)
@@ -34,6 +42,12 @@ async def start_download(body: DownloadRequest, background_tasks: BackgroundTask
 
 @router.get("/{job_id}/stream")
 async def stream_progress(job_id: str):
+    # If the job already completed (client reconnecting after the fact), replay terminal event
+    if job_id in _completed_jobs:
+        async def completed_generator():
+            yield {"event": "progress", "data": json.dumps(_completed_jobs[job_id])}
+        return EventSourceResponse(completed_generator())
+
     if job_id not in _jobs:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -49,7 +63,8 @@ async def stream_progress(job_id: str):
             yield {"event": "progress", "data": json.dumps(item)}
 
             if item.get("status") in ("complete", "error"):
-                _jobs.pop(job_id, None)
+                _completed_jobs[job_id] = item
+                asyncio.create_task(_cleanup_job(job_id, delay=30))
                 break
 
     return EventSourceResponse(event_generator())
