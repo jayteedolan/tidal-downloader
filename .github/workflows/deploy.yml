@@ -21,6 +21,11 @@ jobs:
         run: |
           /home/jtdolan/Projects/tidal-downloader/.venv/bin/pip install -r             /home/jtdolan/Projects/tidal-downloader/requirements.txt
 
+      - name: Install service file
+        run: |
+          sudo cp /home/jtdolan/Projects/tidal-downloader/tidal-downloader.service /etc/systemd/system/tidal-downloader.service
+          sudo systemctl daemon-reload
+
       - name: Restart service
         run: sudo systemctl restart tidal-downloader
 
