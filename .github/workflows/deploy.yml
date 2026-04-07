@@ -15,6 +15,7 @@ jobs:
         run: |
           cd /home/jtdolan/Projects/tidal-downloader
           git fetch origin main
+          git checkout main
           git reset --hard origin/main
 
       - name: Install dependencies
