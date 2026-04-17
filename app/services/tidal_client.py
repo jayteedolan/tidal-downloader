@@ -93,7 +93,14 @@ async def _get(path: str, params: Optional[dict] = None) -> dict:
             try:
                 resp = await client.get(url, params=params)
                 if resp.status_code == 200:
-                    return resp.json()
+                    if not resp.content:
+                        last_error = Exception(f"Empty response body from {host}")
+                        continue
+                    try:
+                        return resp.json()
+                    except Exception as e:
+                        last_error = Exception(f"JSON decode error from {host}: {e}")
+                        continue
                 last_error = Exception(f"HTTP {resp.status_code} from {host}")
             except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as e:
                 last_error = e
