@@ -6,9 +6,15 @@ router = APIRouter(prefix="/api/tidal", tags=["tidal"])
 
 
 @router.get("/search", response_model=list[AlbumResult])
-async def search_albums(q: str = Query(..., min_length=1)):
+async def search_albums(
+    q: str = Query(""),
+    artist: str = Query(""),
+    album: str = Query(""),
+):
+    if not (q or artist or album):
+        raise HTTPException(status_code=400, detail="Provide at least one of: q, artist, album")
     try:
-        return await tidal_client.search_albums(q)
+        return await tidal_client.search_albums(query=q, artist=artist, album=album)
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
 

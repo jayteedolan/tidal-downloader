@@ -162,7 +162,11 @@ function musicApp() {
       this.selectedAlbum = null;
       this.activeSearchTab = 'albums';
       try {
-        const res = await fetch(`/api/tidal/search?q=${encodeURIComponent(q)}`);
+        const params = new URLSearchParams();
+        if (this.searchArtist) params.set('artist', this.searchArtist);
+        if (this.searchAlbum) params.set('album', this.searchAlbum);
+        if (!params.toString()) params.set('q', q);
+        const res = await fetch(`/api/tidal/search?${params}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Search failed');
         this.searchResults = data;

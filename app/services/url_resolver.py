@@ -3,6 +3,7 @@ import httpx
 from typing import Optional
 from urllib.parse import quote
 from ..models import UrlResolveResult
+from .tidal_client import get_album_id_for_track
 
 ODESLI_API = "https://api.song.link/v1-alpha.1/links"
 
@@ -36,6 +37,13 @@ def _extract_tidal_album_id(url: str) -> Optional[int]:
     return None
 
 
+def _extract_tidal_track_id(url: str) -> Optional[int]:
+    m = TIDAL_TRACK_RE.search(url)
+    if m:
+        return int(m.group(1))
+    return None
+
+
 async def resolve_url(url: str) -> UrlResolveResult:
     platform = _detect_platform(url)
 
@@ -61,21 +69,33 @@ async def resolve_url(url: str) -> UrlResolveResult:
             data = resp.json()
 
         # Find the Tidal entity
-        tidal_entity = None
         links_by_platform = data.get("linksByPlatform", {})
         if "tidal" in links_by_platform:
             tidal_url = links_by_platform["tidal"].get("url", "")
+            entity_unique_id = links_by_platform["tidal"].get("entityUniqueId", "")
+            entity = data.get("entitiesByUniqueId", {}).get(entity_unique_id, {})
+
             album_id = _extract_tidal_album_id(tidal_url)
             if album_id:
-                # Get title/artist from the entity map
-                entity_unique_id = links_by_platform["tidal"].get("entityUniqueId", "")
-                entity = data.get("entitiesByUniqueId", {}).get(entity_unique_id, {})
                 return UrlResolveResult(
                     tidal_album_id=album_id,
                     source_platform=platform,
                     album_title=entity.get("title"),
                     artist=entity.get("artistName"),
                 )
+
+            # Odesli linked to a Tidal track instead of an album (common for singles).
+            # Look up the track's parent album via the Tidal API.
+            track_id = _extract_tidal_track_id(tidal_url)
+            if track_id:
+                album_id = await get_album_id_for_track(track_id)
+                if album_id:
+                    return UrlResolveResult(
+                        tidal_album_id=album_id,
+                        source_platform=platform,
+                        album_title=entity.get("title"),
+                        artist=entity.get("artistName"),
+                    )
 
         raise ValueError("Could not find a Tidal album match via Odesli for this URL.")
 
