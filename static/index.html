@@ -187,11 +187,14 @@
     <div x-show="step === 3">
       <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
         <button class="btn-secondary" @click="step = 2">← Back</button>
-        <span class="text-muted text-sm">
-          Searching MusicBrainz for
-          <strong x-text="selectedAlbum?.artist"></strong> —
-          <strong x-text="selectedAlbum?.title"></strong>
-        </span>
+        <span class="text-muted text-sm">MusicBrainz search</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <input class="search-input" style="flex:1;min-width:120px" placeholder="Artist"
+               x-model="mbSearchArtist" @keydown.enter="searchMusicBrainz()">
+        <input class="search-input" style="flex:1;min-width:120px" placeholder="Release title"
+               x-model="mbSearchAlbum" @keydown.enter="searchMusicBrainz()">
+        <button class="btn-primary" @click="searchMusicBrainz()" :disabled="mbLoading">Search</button>
       </div>
 
       <div x-show="mbLoading" class="empty-state">
@@ -226,6 +229,12 @@
 
       <div x-show="!mbLoading && !mbResults.length && !mbError" class="empty-state">
         No results yet.
+      </div>
+
+      <div style="margin-top:16px;text-align:right">
+        <button class="btn-secondary" @click="skipMbStep()" :disabled="mbLoading">
+          Skip MusicBrainz →
+        </button>
       </div>
     </div><!-- /step 3 -->
 

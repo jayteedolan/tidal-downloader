@@ -59,7 +59,7 @@ def _release_to_result(r: dict) -> ReleaseResult:
     )
 
 
-def search_releases(artist: str, album: str, limit: int = 10) -> list[ReleaseResult]:
+def search_releases(artist: str, album: str, limit: int = 25) -> list[ReleaseResult]:
     try:
         result = musicbrainzngs.search_releases(
             artist=artist,
