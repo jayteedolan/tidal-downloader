@@ -225,6 +225,25 @@ async def get_album(album_id: int) -> AlbumDetail:
     return AlbumDetail(album=album, tracks=tracks)
 
 
+async def get_album_id_for_track(track_id: int) -> Optional[int]:
+    """Return the Tidal album ID that contains the given track."""
+    data = await _get("/track/", params={"id": track_id})
+    inner = data.get("data", data) if isinstance(data, dict) else data
+    for obj in (inner, data):
+        if not isinstance(obj, dict):
+            continue
+        album = obj.get("album")
+        if isinstance(album, dict):
+            album_id = album.get("id")
+            if album_id:
+                return int(album_id)
+        for key in ("albumId", "album_id"):
+            val = obj.get(key)
+            if val:
+                return int(val)
+    return None
+
+
 async def get_track_stream(track_id: int, quality: str = "LOSSLESS") -> TrackStream:
     data = await _get("/track/", params={"id": track_id, "quality": quality})
 
