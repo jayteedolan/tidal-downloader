@@ -102,7 +102,7 @@ class FolderMatch(BaseModel):
 
 class DownloadRequest(BaseModel):
     tidal_album_id: int
-    mb_release_id: str
+    mb_release_id: Optional[str] = None  # None = skip MusicBrainz, use Tidal metadata only
     dest_artist_folder: str   # full path to existing artist folder, or parent for new
     new_folder_name: Optional[str] = None  # if set, create this new artist folder
     track_ids: Optional[list[int]] = None  # Tidal track IDs to download; None = all tracks

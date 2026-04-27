@@ -94,8 +94,10 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
             allowed = set(req.track_ids)
             tidal_tracks = [t for t in tidal_tracks if t.id in allowed]
 
-        # 2. Fetch MusicBrainz release detail
-        mb_release = musicbrainz_client.get_release_detail(req.mb_release_id)
+        # 2. Fetch MusicBrainz release detail (optional — None if user skipped)
+        mb_release = None
+        if req.mb_release_id:
+            mb_release = musicbrainz_client.get_release_detail(req.mb_release_id)
 
         # 3. Determine destination artist folder
         if req.new_folder_name:
@@ -105,17 +107,21 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
             artist_folder = Path(req.dest_artist_folder)
 
         # 4. Create album folder
-        year = (mb_release.date or tidal_album.year or "")[:4] or None
-        album_folder = file_manager.create_album_folder(str(artist_folder), mb_release.title or tidal_album.title, year)
+        release_date = (mb_release.date if mb_release else None) or tidal_album.year or ""
+        year = release_date[:4] or None
+        album_title = (mb_release.title if mb_release else None) or tidal_album.title
+        album_folder = file_manager.create_album_folder(str(artist_folder), album_title, year)
 
         total = len(tidal_tracks)
 
         # Build a mapping disc+track_number -> MB recording
         mb_map: dict[tuple[int, int], RecordingInfo] = {}
-        for rec in mb_release.recordings:
-            mb_map[(rec.disc_number, rec.track_number)] = rec
+        if mb_release:
+            for rec in mb_release.recordings:
+                mb_map[(rec.disc_number, rec.track_number)] = rec
 
-        total_discs = mb_release.disc_count or 1
+        total_discs = (mb_release.disc_count if mb_release else None) \
+            or len({t.disc_number for t in tidal_tracks}) or 1
 
         # 5. Download each track
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -138,19 +144,19 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                     meta = TrackMetadata(
                         title=rec.title if rec else tidal_track.title,
                         artist=rec.artist_credit if (rec and rec.artist_credit) else tidal_album.artist,
-                        album_artist=mb_release.artist or tidal_album.artist,
-                        album=mb_release.title or tidal_album.title,
-                        date=mb_release.date or tidal_album.year,
+                        album_artist=(mb_release.artist if mb_release else None) or tidal_album.artist,
+                        album=album_title,
+                        date=release_date or None,
                         track_number=tidal_track.track_number,
                         total_tracks=total,
                         disc_number=tidal_track.disc_number,
                         total_discs=total_discs,
-                        label=mb_release.label,
-                        country=mb_release.country,
+                        label=mb_release.label if mb_release else None,
+                        country=mb_release.country if mb_release else None,
                         cover_url=tidal_album.cover_url,
-                        musicbrainz_album_id=mb_release.id,
+                        musicbrainz_album_id=mb_release.id if mb_release else None,
                         musicbrainz_track_id=rec.id if rec else None,
-                        musicbrainz_artist_id=mb_release.artist_id,
+                        musicbrainz_artist_id=mb_release.artist_id if mb_release else None,
                     )
 
                     await tagger.tag_flac(tmp_path, meta)

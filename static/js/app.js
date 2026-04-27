@@ -26,6 +26,8 @@ function musicApp() {
     mbError: '',
     mbResults: [],
     selectedRelease: null,
+    mbSearchArtist: '',
+    mbSearchAlbum: '',
 
     // ── Step 2: Album detail loading ──────────────────────────────
     albumDetailLoading: false,
@@ -184,6 +186,8 @@ function musicApp() {
       this.folderQuery = album.artist || '';
       this.newFolderName = album.artist || '';
       this.selectedTrackIds = [];
+      this.mbSearchArtist = album.artist || '';
+      this.mbSearchAlbum = album.title || '';
       this.step = 2;
       // Kick off MB search in background so step 3 loads instantly
       this.searchMusicBrainz();
@@ -251,13 +255,13 @@ function musicApp() {
     // ── Step 3: MusicBrainz ───────────────────────────────────────
 
     async searchMusicBrainz() {
-      if (!this.selectedAlbum) return;
+      if (!this.mbSearchArtist && !this.mbSearchAlbum) return;
       this.mbLoading = true;
       this.mbError = '';
       this.mbResults = [];
       this.selectedRelease = null;
-      const artist = encodeURIComponent(this.selectedAlbum.artist || '');
-      const album = encodeURIComponent(this.selectedAlbum.title || '');
+      const artist = encodeURIComponent(this.mbSearchArtist);
+      const album = encodeURIComponent(this.mbSearchAlbum);
       try {
         const res = await fetch(`/api/musicbrainz/search?artist=${artist}&album=${album}`);
         const data = await res.json();
@@ -283,6 +287,12 @@ function musicApp() {
 
     selectRelease(release) {
       this.selectedRelease = release;
+      this.step = 4;
+      this.searchFolders();
+    },
+
+    skipMbStep() {
+      this.selectedRelease = null;
       this.step = 4;
       this.searchFolders();
     },
@@ -359,7 +369,7 @@ function musicApp() {
     // ── Step 5: Download ──────────────────────────────────────────
 
     get canDownload() {
-      return this.selectedAlbum && this.selectedRelease &&
+      return this.selectedAlbum &&
         (this.selectedFolder || (this.createNewFolder && this.newFolderName.trim())) &&
         this.selectedTrackIds.length > 0;
     },
@@ -426,7 +436,7 @@ function musicApp() {
 
       const body = {
         tidal_album_id: this.selectedAlbum.id,
-        mb_release_id: this.selectedRelease.id,
+        mb_release_id: this.selectedRelease?.id ?? null,
         dest_artist_folder: this.selectedFolder ? this.selectedFolder.full_path : '',
         new_folder_name: this.createNewFolder ? this.newFolderName.trim() : null,
         track_ids: this.selectedTrackIds,
@@ -547,6 +557,8 @@ function musicApp() {
       this.selectedTrackIds = [];
       this.mbResults = [];
       this.mbError = '';
+      this.mbSearchArtist = '';
+      this.mbSearchAlbum = '';
       this.selectedRelease = null;
       this.folderQuery = '';
       this.folderResults = [];
