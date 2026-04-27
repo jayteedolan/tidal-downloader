@@ -54,6 +54,9 @@ function musicApp() {
     // ── Lifecycle ─────────────────────────────────────────────────
 
     init() {
+      this.$watch('step', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
       this._onVisibilityChange = () => {
         if (document.visibilityState === 'visible' && this._activeJobId) {
           this._reconnectSSE();
