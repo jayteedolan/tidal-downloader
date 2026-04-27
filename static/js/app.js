@@ -292,6 +292,7 @@ function musicApp() {
     },
 
     skipMbStep() {
+      this.mbLoading = false;
       this.selectedRelease = null;
       this.step = 4;
       this.searchFolders();

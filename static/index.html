@@ -189,12 +189,25 @@
         <button class="btn-secondary" @click="step = 2">← Back</button>
         <span class="text-muted text-sm">MusicBrainz search</span>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-        <input class="search-input" style="flex:1;min-width:120px" placeholder="Artist"
-               x-model="mbSearchArtist" @keydown.enter="searchMusicBrainz()">
-        <input class="search-input" style="flex:1;min-width:120px" placeholder="Release title"
-               x-model="mbSearchAlbum" @keydown.enter="searchMusicBrainz()">
-        <button class="btn-primary" @click="searchMusicBrainz()" :disabled="mbLoading">Search</button>
+      <div class="card" style="margin-bottom:16px">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Artist</label>
+            <input type="text" x-model="mbSearchArtist" placeholder="e.g. Action Bronson"
+                   @keyup.enter="searchMusicBrainz()" />
+          </div>
+          <div class="form-group">
+            <label>Release</label>
+            <input type="text" x-model="mbSearchAlbum" placeholder="e.g. Triceratops"
+                   @keyup.enter="searchMusicBrainz()" />
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button class="btn-primary" @click="searchMusicBrainz()" :disabled="mbLoading">
+              <span x-show="mbLoading"><span class="spinner"></span></span>
+              <span x-show="!mbLoading">Search</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div x-show="mbLoading" class="empty-state">
@@ -232,7 +245,7 @@
       </div>
 
       <div style="margin-top:16px;text-align:right">
-        <button class="btn-secondary" @click="skipMbStep()" :disabled="mbLoading">
+        <button class="btn-secondary" @click="skipMbStep()">
           Skip MusicBrainz →
         </button>
       </div>
