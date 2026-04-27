@@ -86,30 +86,48 @@ def _parse_track(item: dict) -> TrackInfo:
 
 
 async def _get(path: str, params: Optional[dict] = None) -> dict:
-    last_error: Optional[Exception] = None
     async with httpx.AsyncClient(headers=HEADERS, timeout=TIMEOUT, follow_redirects=True) as client:
-        for host in TIDAL_HOSTS:
-            url = f"https://{host}{path}"
-            try:
-                resp = await client.get(url, params=params)
-                if resp.status_code == 200:
-                    if not resp.content:
-                        last_error = Exception(f"Empty response body from {host}")
-                        continue
-                    try:
-                        return resp.json()
-                    except Exception as e:
-                        last_error = Exception(f"JSON decode error from {host}: {e}")
-                        continue
-                last_error = Exception(f"HTTP {resp.status_code} from {host}")
-            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as e:
-                last_error = e
-                continue
+
+        async def _try(host: str) -> dict:
+            resp = await client.get(f"https://{host}{path}", params=params)
+            if resp.status_code != 200:
+                raise RuntimeError(f"HTTP {resp.status_code} from {host}")
+            if not resp.content:
+                raise RuntimeError(f"Empty response body from {host}")
+            return resp.json()
+
+        tasks = {asyncio.create_task(_try(host)): host for host in TIDAL_HOSTS}
+        pending = set(tasks)
+        last_error: Optional[Exception] = None
+        try:
+            while pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    exc = task.exception()
+                    if exc is None:
+                        return task.result()
+                    last_error = exc
+        finally:
+            for t in pending:
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
+
     raise RuntimeError(f"All Tidal hosts failed. Last error: {last_error}")
 
 
-async def search_albums(query: str) -> list[AlbumResult]:
-    data = await _get("/search/", params={"al": query})
+async def search_albums(query: str = "", artist: str = "", album: str = "") -> list[AlbumResult]:
+    if artist and album:
+        params = {"ar": artist, "al": album}
+    elif artist:
+        params = {"al": artist}
+    elif album:
+        params = {"al": album}
+    else:
+        params = {"al": query}
+    data = await _get("/search/", params=params)
 
     logger.debug("search_albums response type=%s keys=%s",
                  type(data).__name__,
