@@ -26,11 +26,11 @@ def create_album_folder(artist_folder: str, album_title: str, year: Optional[str
     return album_path
 
 
-def track_filename(track_number: int, disc_number: int, total_discs: int, title: str) -> str:
+def track_filename(track_number: int, disc_number: int, total_discs: int, title: str, ext: str = "flac") -> str:
     clean_title = sanitize_filename(title)
     if total_discs > 1:
-        return f"{disc_number}-{track_number:02d} - {clean_title}.flac"
-    return f"{track_number:02d} - {clean_title}.flac"
+        return f"{disc_number}-{track_number:02d} - {clean_title}.{ext}"
+    return f"{track_number:02d} - {clean_title}.{ext}"
 
 
 def move_file(src: Path, dest: Path) -> None:

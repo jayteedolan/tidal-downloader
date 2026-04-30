@@ -133,7 +133,7 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                     # Get stream info
                     stream = await tidal_client.get_track_stream(tidal_track.id, quality="LOSSLESS")
 
-                    tmp_path = Path(tmpdir) / f"track_{idx:03d}.flac"
+                    tmp_path = Path(tmpdir) / f"track_{idx:03d}.tmp"
                     await dash_downloader.download_flac(stream, tmp_path)
 
                     await emit("tagging", track_num=idx, total=total, title=track_title)
@@ -159,13 +159,14 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                         musicbrainz_artist_id=mb_release.artist_id if mb_release else None,
                     )
 
-                    await tagger.tag_flac(tmp_path, meta)
+                    ext = await tagger.tag_file(tmp_path, meta)
 
                     filename = file_manager.track_filename(
                         tidal_track.track_number,
                         tidal_track.disc_number,
                         total_discs,
                         rec.title if rec else tidal_track.title,
+                        ext=ext,
                     )
                     dest = album_folder / filename
                     file_manager.move_file(tmp_path, dest)
