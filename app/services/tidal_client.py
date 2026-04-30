@@ -143,6 +143,40 @@ def _extract_items_from_response(data: dict | list) -> list:
     return []
 
 
+def _albums_from_track_results(data: dict | list) -> list[AlbumResult]:
+    """
+    Extract AlbumResult objects from a track search response.
+    Track search (s=) returns tracks with embedded album info; each unique
+    parent album becomes one AlbumResult with release_type='SINGLE'.
+    """
+    items = []
+    if isinstance(data, dict):
+        inner = data.get("data") or data
+        if isinstance(inner, dict):
+            items = inner.get("items", [])
+    seen_ids: set[int] = set()
+    results = []
+    for item in items:
+        track = item.get("item", item)
+        album_sub = track.get("album")
+        if not isinstance(album_sub, dict) or not album_sub.get("id"):
+            continue
+        album_id = int(album_sub["id"])
+        if album_id in seen_ids:
+            continue
+        seen_ids.add(album_id)
+        artist = (track.get("artists") or [{}])[0].get("name", "")
+        results.append(AlbumResult(
+            id=album_id,
+            title=album_sub.get("title", ""),
+            artist=artist,
+            cover_url=_cover_url(album_sub.get("cover")),
+            explicit=bool(track.get("explicit", False)),
+            release_type="SINGLE",
+        ))
+    return results
+
+
 def _parse_items(items: list) -> list[AlbumResult]:
     seen_ids: set[int] = set()
     results = []
@@ -162,17 +196,24 @@ def _parse_items(items: list) -> list[AlbumResult]:
 
 async def search_albums(query: str = "", artist: str = "", album: str = "") -> list[AlbumResult]:
     # The proxy's 'ar' (artist) parameter does not filter results — only 'al' works.
-    # When both artist and album are given, run two parallel searches (one per term)
-    # and merge, ranking releases that match both artist name and album title first.
+    # When both artist and album are given, run three parallel searches:
+    #   al=<artist>        → artist's catalog (album/EP releases)
+    #   al=<album>         → releases whose title matches the album name
+    #   s=<artist> <album> → track search, which surfaces singles not indexed as
+    #                        standalone album releases (e.g. JPEGMAFIA "babygirl")
+    # Results are merged and ranked: releases matching both artist+title first.
     if artist and album:
-        artist_data, album_data = await asyncio.gather(
+        track_query = f"{artist} {album}"
+        artist_data, album_data, track_data = await asyncio.gather(
             _get("/search/", params={"al": artist}),
             _get("/search/", params={"al": album}),
+            _get("/search/", params={"s": track_query}),
         )
         artist_items = _extract_items_from_response(artist_data)
         album_items = _extract_items_from_response(album_data)
+        track_albums = _albums_from_track_results(track_data)
 
-        # Deduplicate preserving order (artist results first)
+        # Deduplicate raw items (artist + album searches), preserving order
         seen: set[int] = set()
         merged: list = []
         for item in artist_items + album_items:
@@ -202,8 +243,18 @@ async def search_albums(query: str = "", artist: str = "", album: str = "") -> l
             return -score  # descending
 
         merged.sort(key=_rank)
-        logger.debug("search_albums (artist+album) merged %d items", len(merged))
-        return _parse_items(merged)
+        parsed = _parse_items(merged)
+
+        # Prepend track-derived singles whose album IDs aren't already in results,
+        # filtering to those where the artist name actually matches.
+        parsed_ids = {r.id for r in parsed}
+        for ta in track_albums:
+            if ta.id not in parsed_ids and artist_lc in ta.artist.lower():
+                parsed.insert(0, ta)
+                parsed_ids.add(ta.id)
+
+        logger.debug("search_albums (artist+album) total %d items", len(parsed))
+        return parsed
 
     if artist:
         data = await _get("/search/", params={"al": artist})
