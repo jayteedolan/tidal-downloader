@@ -15,7 +15,13 @@ TIDAL_TRACK_RE = re.compile(
 )
 
 TIMEOUT = httpx.Timeout(15.0, connect=8.0)
-REDIRECT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
+# Matches Tidal URLs that have extra path components after the album ID,
+# e.g. /album/510761404/u — these are share/universal links whose numeric
+# ID may not be the real Tidal album ID and need Odesli to canonicalise.
+TIDAL_SHARE_LINK_RE = re.compile(
+    r"tidal\.com/(?:browse/)?(?:[a-z]{2}/)?album/\d+/.+", re.IGNORECASE
+)
 
 
 def _detect_platform(url: str) -> str:
@@ -45,24 +51,49 @@ def _extract_tidal_track_id(url: str) -> Optional[int]:
     return None
 
 
-async def _resolve_tidal_url(url: str) -> str:
-    """Follow redirects on a Tidal URL to get the canonical URL."""
+async def _odesli_lookup(url: str) -> Optional[int]:
+    """Return the Tidal album ID for a URL by querying Odesli, or None on failure."""
     try:
-        async with httpx.AsyncClient(timeout=REDIRECT_TIMEOUT, follow_redirects=True) as client:
-            resp = await client.head(url, headers={"User-Agent": "Mozilla/5.0"})
-            return str(resp.url)
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+            resp = await client.get(ODESLI_API, params={"url": url, "songIfSingle": "true"})
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
     except Exception:
-        return url
+        return None
+
+    links_by_platform = data.get("linksByPlatform", {})
+    tidal_entry = links_by_platform.get("tidal", {})
+    tidal_url = tidal_entry.get("url", "")
+
+    album_id = _extract_tidal_album_id(tidal_url)
+    if album_id:
+        return album_id
+
+    # Odesli returned a track URL — resolve to parent album
+    track_id = _extract_tidal_track_id(tidal_url)
+    if track_id:
+        return await get_album_id_for_track(track_id)
+
+    return None
 
 
 async def resolve_url(url: str) -> UrlResolveResult:
     platform = _detect_platform(url)
 
     if platform == "tidal":
-        # Follow redirects first — share/universal links (e.g. /album/ID/u) may
-        # redirect to a canonical URL with a different album ID.
-        canonical = await _resolve_tidal_url(url)
-        album_id = _extract_tidal_album_id(canonical) or _extract_tidal_album_id(url)
+        # Share/universal links (e.g. /album/ID/u) append a slug after the numeric
+        # segment; the number may not be a valid Tidal album ID.  Resolve via Odesli
+        # first and fall back to direct extraction if Odesli can't find it.
+        if TIDAL_SHARE_LINK_RE.search(url):
+            album_id = await _odesli_lookup(url)
+            if album_id is None:
+                album_id = _extract_tidal_album_id(url)
+            if album_id is None:
+                raise ValueError("Could not resolve this Tidal share link. Try using a direct Tidal album URL.")
+            return UrlResolveResult(tidal_album_id=album_id, source_platform="tidal")
+
+        album_id = _extract_tidal_album_id(url)
         if album_id is None:
             raise ValueError("Could not extract a Tidal album ID from this URL. Try using a Tidal album URL (not a track URL).")
         return UrlResolveResult(
