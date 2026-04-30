@@ -118,54 +118,36 @@ async def _get(path: str, params: Optional[dict] = None) -> dict:
     raise RuntimeError(f"All Tidal hosts failed. Last error: {last_error}")
 
 
-async def search_albums(query: str = "", artist: str = "", album: str = "") -> list[AlbumResult]:
-    if artist and album:
-        params = {"ar": artist, "al": album}
-    elif artist:
-        params = {"al": artist}
-    elif album:
-        params = {"al": album}
-    else:
-        params = {"al": query}
-    data = await _get("/search/", params=params)
-
-    logger.debug("search_albums response type=%s keys=%s",
-                 type(data).__name__,
-                 list(data.keys()) if isinstance(data, dict) else "N/A")
-
-    items = []
+def _extract_items_from_response(data: dict | list) -> list:
+    """Pull the raw album items list out of a proxy search response."""
     if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        # Try top-level items
-        items = data.get("items") or []
-        # Try data.items
-        if not items:
-            items = data.get("data", {}).get("items") or []
-        # Try albums key (dict or list)
-        if not items and "albums" in data:
-            albums_data = data["albums"]
-            if isinstance(albums_data, dict):
-                items = albums_data.get("items", [])
-            elif isinstance(albums_data, list):
-                items = albums_data
-        # Try nested data.albums
-        if not items:
-            data_inner = data.get("data") or {}
-            if isinstance(data_inner, dict) and "albums" in data_inner:
-                albums_data = data_inner["albums"]
-                if isinstance(albums_data, dict):
-                    items = albums_data.get("items", [])
-                elif isinstance(albums_data, list):
-                    items = albums_data
+        return data
+    if not isinstance(data, dict):
+        return []
+    for candidate in (
+        data.get("items"),
+        (data.get("data") or {}).get("items"),
+    ):
+        if candidate:
+            return candidate
+    for source in (data, data.get("data") or {}):
+        if not isinstance(source, dict):
+            continue
+        albums_data = source.get("albums")
+        if isinstance(albums_data, dict):
+            items = albums_data.get("items", [])
+            if items:
+                return items
+        elif isinstance(albums_data, list) and albums_data:
+            return albums_data
+    return []
 
-    logger.debug("search_albums found %d raw items", len(items))
 
+def _parse_items(items: list) -> list[AlbumResult]:
     seen_ids: set[int] = set()
     results = []
     for item in items:
         album_data = item.get("item", item)
-        # If the item is a track (has trackNumber), pull out its embedded album object
         if "trackNumber" in album_data or "volumeNumber" in album_data:
             album_data = album_data.get("album", album_data)
         try:
@@ -176,6 +158,66 @@ async def search_albums(query: str = "", artist: str = "", album: str = "") -> l
         except (KeyError, TypeError):
             continue
     return results
+
+
+async def search_albums(query: str = "", artist: str = "", album: str = "") -> list[AlbumResult]:
+    # The proxy's 'ar' (artist) parameter does not filter results — only 'al' works.
+    # When both artist and album are given, run two parallel searches (one per term)
+    # and merge, ranking releases that match both artist name and album title first.
+    if artist and album:
+        artist_data, album_data = await asyncio.gather(
+            _get("/search/", params={"al": artist}),
+            _get("/search/", params={"al": album}),
+        )
+        artist_items = _extract_items_from_response(artist_data)
+        album_items = _extract_items_from_response(album_data)
+
+        # Deduplicate preserving order (artist results first)
+        seen: set[int] = set()
+        merged: list = []
+        for item in artist_items + album_items:
+            raw = item.get("item", item)
+            id_ = raw.get("id")
+            if id_ and id_ not in seen:
+                seen.add(id_)
+                merged.append(item)
+
+        # Rank: items where BOTH artist name and album title match score highest
+        artist_lc = artist.lower()
+        album_lc = album.lower()
+
+        def _rank(item) -> int:
+            raw = item.get("item", item)
+            name = ""
+            if isinstance(raw.get("artist"), dict):
+                name = raw["artist"].get("name", "").lower()
+            elif raw.get("artists"):
+                name = (raw["artists"][0] or {}).get("name", "").lower()
+            title = raw.get("title", "").lower()
+            score = 0
+            if artist_lc in name or name in artist_lc:
+                score += 10
+            if album_lc in title or title in album_lc:
+                score += 5
+            return -score  # descending
+
+        merged.sort(key=_rank)
+        logger.debug("search_albums (artist+album) merged %d items", len(merged))
+        return _parse_items(merged)
+
+    if artist:
+        data = await _get("/search/", params={"al": artist})
+    elif album:
+        data = await _get("/search/", params={"al": album})
+    else:
+        data = await _get("/search/", params={"al": query})
+
+    logger.debug("search_albums response type=%s keys=%s",
+                 type(data).__name__,
+                 list(data.keys()) if isinstance(data, dict) else "N/A")
+    items = _extract_items_from_response(data)
+    logger.debug("search_albums found %d raw items", len(items))
+    return _parse_items(items)
 
 
 async def get_album(album_id: int) -> AlbumDetail:
