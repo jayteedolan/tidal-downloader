@@ -15,6 +15,7 @@ TIDAL_TRACK_RE = re.compile(
 )
 
 TIMEOUT = httpx.Timeout(15.0, connect=8.0)
+REDIRECT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 
 def _detect_platform(url: str) -> str:
@@ -44,14 +45,25 @@ def _extract_tidal_track_id(url: str) -> Optional[int]:
     return None
 
 
+async def _resolve_tidal_url(url: str) -> str:
+    """Follow redirects on a Tidal URL to get the canonical URL."""
+    try:
+        async with httpx.AsyncClient(timeout=REDIRECT_TIMEOUT, follow_redirects=True) as client:
+            resp = await client.head(url, headers={"User-Agent": "Mozilla/5.0"})
+            return str(resp.url)
+    except Exception:
+        return url
+
+
 async def resolve_url(url: str) -> UrlResolveResult:
     platform = _detect_platform(url)
 
     if platform == "tidal":
-        album_id = _extract_tidal_album_id(url)
+        # Follow redirects first — share/universal links (e.g. /album/ID/u) may
+        # redirect to a canonical URL with a different album ID.
+        canonical = await _resolve_tidal_url(url)
+        album_id = _extract_tidal_album_id(canonical) or _extract_tidal_album_id(url)
         if album_id is None:
-            # It might be a track URL — we can't easily get the album from just the URL
-            # without an extra API call; return what we have and let the caller handle it
             raise ValueError("Could not extract a Tidal album ID from this URL. Try using a Tidal album URL (not a track URL).")
         return UrlResolveResult(
             tidal_album_id=album_id,
