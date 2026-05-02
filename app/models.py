@@ -119,6 +119,7 @@ class DownloadProgress(BaseModel):
     track_title: Optional[str] = None
     status: str  # "starting" | "downloading" | "tagging" | "done" | "error" | "complete"
     error: Optional[str] = None
+    format: Optional[str] = None  # "flac" | "m4a" — set on "done"
 
 
 # ── Tagging metadata (internal) ──────────────────────────────────────────────

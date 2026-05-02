@@ -544,6 +544,7 @@ function musicApp() {
           this.trackStatuses[idx].status = msg.status;
           if (msg.error) this.trackStatuses[idx].error = msg.error;
           if (msg.track_title) this.trackStatuses[idx].title = msg.track_title;
+          if (msg.format) this.trackStatuses[idx].format = msg.format;
         }
       }
     },

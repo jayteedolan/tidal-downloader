@@ -89,7 +89,7 @@ async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> None:
 
 
 async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue):
-    async def emit(status: str, track_num=None, total=None, title=None, error=None):
+    async def emit(status: str, track_num=None, total=None, title=None, error=None, fmt=None):
         await queue.put({
             "job_id": job_id,
             "status": status,
@@ -97,6 +97,7 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
             "total_tracks": total,
             "track_title": title,
             "error": error,
+            "format": fmt,
         })
 
     try:
@@ -186,7 +187,7 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                     dest = album_folder / filename
                     file_manager.move_file(tmp_path, dest)
 
-                    await emit("done", track_num=idx, total=total, title=track_title)
+                    await emit("done", track_num=idx, total=total, title=track_title, fmt=ext)
 
                 except Exception as e:
                     await emit("error", track_num=idx, total=total, title=track_title, error=str(e))

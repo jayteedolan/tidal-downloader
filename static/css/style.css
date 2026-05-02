@@ -352,6 +352,17 @@ button {
 .status-done { color: var(--green); }
 .status-error { color: var(--red); }
 
+.format-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.format-flac { background: rgba(76, 175, 128, 0.18); color: var(--green); }
+.format-aac  { background: rgba(255, 193, 7, 0.18);  color: var(--yellow); }
+
 /* ── Summary ────────────────────────────────────────────────── */
 .summary-grid {
   display: grid;
