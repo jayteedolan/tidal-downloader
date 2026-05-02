@@ -399,8 +399,8 @@
                 <span class="status-icon" :class="statusClass(t.status)"
                       x-text="statusIcon(t.status)"></span>
                 <span x-show="t.format" class="format-badge"
-                      :class="t.format === 'flac' ? 'format-flac' : 'format-aac'"
-                      x-text="t.format === 'flac' ? 'FLAC' : 'AAC'"></span>
+                      :class="t.format === 'flac-hires' ? 'format-hires' : t.format === 'flac' ? 'format-flac' : 'format-aac'"
+                      x-text="t.format === 'flac-hires' ? 'HI-RES' : t.format === 'flac' ? 'FLAC' : 'AAC'"></span>
                 <span x-show="t.error" class="text-sm"
                       style="color:var(--red)" x-text="t.error"></span>
               </div>

@@ -101,7 +101,7 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
             await emit("downloading", track_num=idx, total=total, title=title)
             dest = album_folder / src_path.name
             file_manager.move_file(src_path, dest)
-            fmt = tagger.detect_format(dest)
+            fmt = tagger.detect_audio_detail(dest)
             await emit("done", track_num=idx, total=total, title=title, fmt=fmt)
 
 

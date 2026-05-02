@@ -31,6 +31,26 @@ def detect_format(file_path: Path) -> str:
     return "unknown"
 
 
+def detect_audio_detail(file_path: Path) -> str:
+    """
+    Return a detailed format descriptor for display purposes:
+      'flac-hires'  — FLAC with bit depth > 16 (e.g. 24-bit/48kHz or 24-bit/96kHz)
+      'flac'        — standard 16-bit FLAC
+      'm4a'         — AAC in MP4 container (lossy)
+      'unknown'     — unrecognised container
+    """
+    fmt = detect_format(file_path)
+    if fmt == "flac":
+        try:
+            audio = FLAC(str(file_path))
+            if audio.info.bits_per_sample and audio.info.bits_per_sample > 16:
+                return "flac-hires"
+        except Exception:
+            pass
+        return "flac"
+    return fmt  # 'm4a' or 'unknown'
+
+
 async def _tag_flac(file_path: Path, metadata: TrackMetadata) -> None:
     audio = FLAC(str(file_path))
     audio.clear()
@@ -123,14 +143,14 @@ async def _tag_m4a(file_path: Path, metadata: TrackMetadata) -> None:
 
 
 async def tag_file(file_path: Path, metadata: TrackMetadata) -> str:
-    """Tag the audio file and return the actual format extension ('flac' or 'm4a')."""
+    """Tag the audio file and return a detail descriptor: 'flac-hires', 'flac', or 'm4a'."""
     fmt = detect_format(file_path)
     if fmt == "m4a":
         await _tag_m4a(file_path, metadata)
         return "m4a"
     # Default to FLAC (raises mutagen error if file is genuinely corrupt)
     await _tag_flac(file_path, metadata)
-    return "flac"
+    return detect_audio_detail(file_path)
 
 
 # Keep old name as an alias so other callers don't break

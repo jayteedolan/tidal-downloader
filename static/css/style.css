@@ -360,8 +360,9 @@ button {
   border-radius: 3px;
   flex-shrink: 0;
 }
-.format-flac { background: rgba(76, 175, 128, 0.18); color: var(--green); }
-.format-aac  { background: rgba(255, 193, 7, 0.18);  color: var(--yellow); }
+.format-hires { background: rgba(99, 179, 237, 0.18); color: #63b3ed; }
+.format-flac  { background: rgba(76, 175, 128, 0.18); color: var(--green); }
+.format-aac   { background: rgba(255, 193, 7, 0.18);  color: var(--yellow); }
 
 /* ── Summary ────────────────────────────────────────────────── */
 .summary-grid {
