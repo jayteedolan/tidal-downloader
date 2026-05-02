@@ -341,10 +341,15 @@
       </div>
 
       <!-- Completion banner (shown above everything when done) -->
-      <div x-show="downloadComplete" class="complete-banner-inline" style="margin-bottom:16px">
-        <span class="complete-inline-icon">✓</span>
-        <span>Download complete! <span class="text-muted text-sm" x-text="`${trackStatuses.length || selectedTrackIds.length} tracks saved · Plex scan triggered`"></span></span>
-        <button class="btn-primary" style="margin-left:auto" @click="resetAll()">Download another album</button>
+      <div x-show="downloadComplete" class="complete-banner-inline" style="margin-bottom:20px">
+        <div class="complete-banner-left">
+          <span class="complete-inline-icon">✓</span>
+          <div>
+            <div class="complete-banner-title">Download complete!</div>
+            <div class="complete-banner-sub" x-text="`${trackStatuses.length || selectedTrackIds.length} tracks saved · Plex library scan triggered`"></div>
+          </div>
+        </div>
+        <button class="btn-primary" @click="resetAll()">Download another album</button>
       </div>
 
       <!-- Summary + controls (hidden once download complete) -->
