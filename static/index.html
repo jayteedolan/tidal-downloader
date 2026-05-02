@@ -128,7 +128,7 @@
     ══════════════════════════════════════════════════════════ -->
     <div x-show="step === 2">
       <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
-        <button class="btn-secondary" @click="step = 1">← Back</button>
+        <button class="btn-secondary" @click="_isMbTrackList ? (step = 3) : (step = 1)">← Back</button>
         <span class="text-muted text-sm">
           Select tracks to download from
           <strong x-text="selectedAlbum?.artist"></strong> —
@@ -259,7 +259,7 @@
     ══════════════════════════════════════════════════════════ -->
     <div x-show="step === 4">
       <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
-        <button class="btn-secondary" @click="step = 3">← Back</button>
+        <button class="btn-secondary" @click="_isMbTrackList ? (step = 2) : (step = 3)">← Back</button>
         <span class="text-muted text-sm">Choose or create a destination artist folder</span>
       </div>
 
@@ -337,7 +337,14 @@
         <button class="btn-secondary" @click="step = 4" :disabled="downloading">← Back</button>
       </div>
 
-      <!-- Summary -->
+      <!-- Completion banner (shown above everything when done) -->
+      <div x-show="downloadComplete" class="complete-banner-inline" style="margin-bottom:16px">
+        <span class="complete-inline-icon">✓</span>
+        <span>Download complete! <span class="text-muted text-sm" x-text="`${trackStatuses.length || selectedTrackIds.length} tracks saved · Plex scan triggered`"></span></span>
+        <button class="btn-primary" style="margin-left:auto" @click="resetAll()">Download another album</button>
+      </div>
+
+      <!-- Summary + controls (hidden once download complete) -->
       <div x-show="!downloadComplete">
         <div class="summary-grid" style="margin-bottom:16px">
           <div class="summary-block">
@@ -357,7 +364,7 @@
           </div>
           <div class="summary-block">
             <div class="summary-label">Tracks to download</div>
-            <div class="summary-value" x-text="_spotiflacUrl && !selectedTrackIds.length ? 'Full album via SpotiFLAC' : `${selectedTrackIds.length} of ${albumDetail?.tracks?.length ?? selectedAlbum?.track_count ?? '?'} tracks`"></div>
+            <div class="summary-value" x-text="_spotiflacUrl && !_isMbTrackList ? 'Full album via SpotiFLAC' : `${selectedTrackIds.length} of ${albumDetail?.tracks?.length ?? selectedAlbum?.track_count ?? '?'} tracks`"></div>
             <div class="summary-sub" x-text="selectedAlbum?.quality || 'FLAC'"></div>
           </div>
         </div>
@@ -387,43 +394,33 @@
             </div>
           </div>
         </div>
-
-        <!-- Track progress -->
-        <div x-show="trackStatuses.length > 0">
-          <div class="card-title" style="margin-bottom:10px">Track progress</div>
-          <div class="progress-list">
-            <template x-for="t in trackStatuses" :key="t.track_num">
-              <div class="progress-row">
-                <span class="track-num" x-text="t.display_num ?? t.track_num"></span>
-                <span class="track-title" x-text="t.title"></span>
-                <span class="status-icon" :class="statusClass(t.status)"
-                      x-text="statusIcon(t.status)"></span>
-                <template x-if="t.format">
-                  <span style="display:inline-flex;align-items:center;gap:4px">
-                    <template x-if="t.source_fmt && t.source_fmt !== t.format">
-                      <span style="display:inline-flex;align-items:center;gap:4px">
-                        <span class="format-badge" :class="fmtClass(t.source_fmt)" x-text="fmtLabel(t.source_fmt)"></span>
-                        <span style="color:var(--text-muted);font-size:0.7rem">→</span>
-                      </span>
-                    </template>
-                    <span class="format-badge" :class="fmtClass(t.format)" x-text="fmtLabel(t.format)"></span>
-                  </span>
-                </template>
-                <span x-show="t.error" class="text-sm"
-                      style="color:var(--red)" x-text="t.error"></span>
-              </div>
-            </template>
-          </div>
-        </div>
       </div>
 
-      <!-- Complete banner -->
-      <div class="complete-banner" x-show="downloadComplete">
-        <div class="complete-icon">✓</div>
-        <h2>Download complete!</h2>
-        <p x-text="`${trackStatuses.length || selectedTrackIds.length} tracks saved · Plex library scan triggered`"></p>
-        <div style="margin-top:20px">
-          <button class="btn-primary" @click="resetAll()">Download another album</button>
+      <!-- Track progress (stays visible after completion) -->
+      <div x-show="trackStatuses.length > 0">
+        <div class="card-title" style="margin-bottom:10px">Track progress</div>
+        <div class="progress-list">
+          <template x-for="t in trackStatuses" :key="t.track_num">
+            <div class="progress-row">
+              <span class="track-num" x-text="t.display_num ?? t.track_num"></span>
+              <span class="track-title" x-text="t.title"></span>
+              <span class="status-icon" :class="statusClass(t.status)"
+                    x-text="statusIcon(t.status)"></span>
+              <template x-if="t.format">
+                <span style="display:inline-flex;align-items:center;gap:4px">
+                  <template x-if="t.source_fmt && t.source_fmt !== t.format">
+                    <span style="display:inline-flex;align-items:center;gap:4px">
+                      <span class="format-badge" :class="fmtClass(t.source_fmt)" x-text="fmtLabel(t.source_fmt)"></span>
+                      <span style="color:var(--text-muted);font-size:0.7rem">→</span>
+                    </span>
+                  </template>
+                  <span class="format-badge" :class="fmtClass(t.format)" x-text="fmtLabel(t.format)"></span>
+                </span>
+              </template>
+              <span x-show="t.error" class="text-sm"
+                    style="color:var(--red)" x-text="t.error"></span>
+            </div>
+          </template>
         </div>
       </div>
 

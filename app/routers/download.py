@@ -93,10 +93,16 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
 
         album_title = req.album_title or "Unknown Album"
         album_folder = file_manager.create_album_folder(str(artist_folder), album_title, None)
-        total = len(flac_files)
+
+        sorted_tracks = sorted(flac_files.items())
+        if req.spotiflac_track_positions:
+            selected = set(req.spotiflac_track_positions)
+            sorted_tracks = [(tn, p) for i, (tn, p) in enumerate(sorted_tracks, start=1) if i in selected]
+
+        total = len(sorted_tracks)
 
         await emit("downloading", title=f"Moving {total} track{'s' if total != 1 else ''} to library…")
-        for idx, (track_num, src_path) in enumerate(sorted(flac_files.items()), start=1):
+        for idx, (track_num, src_path) in enumerate(sorted_tracks, start=1):
             title = src_path.stem
             await emit("downloading", track_num=idx, total=total, title=title)
             source_fmt = tagger.detect_audio_detail(src_path)

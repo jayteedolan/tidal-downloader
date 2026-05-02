@@ -54,7 +54,8 @@ function musicApp() {
     overwritePath: '',
     _activeJobId: null,
     _es: null,
-    _spotiflacUrl: null,  // set when Tidal proxy unavailable; triggers SpotiFLAC-only path
+    _spotiflacUrl: null,      // set when Tidal proxy unavailable; triggers SpotiFLAC-only path
+    _isMbTrackList: false,    // albumDetail populated from MB recordings (SpotiFLAC path)
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -323,7 +324,13 @@ function musicApp() {
 
     confirmTrackSelection() {
       if (!this.selectedTrackIds.length) return;
-      this.step = 3;
+      if (this._isMbTrackList) {
+        // MB-based list: step 3 already done; go to folder
+        this.step = 4;
+        this.searchFolders();
+      } else {
+        this.step = 3;
+      }
     },
 
     // ── Step 3: MusicBrainz ───────────────────────────────────────
@@ -361,13 +368,58 @@ function musicApp() {
 
     selectRelease(release) {
       this.selectedRelease = release;
-      this.step = 4;
-      this.searchFolders();
+      if (this._spotiflacUrl) {
+        // SpotiFLAC path: show track selection from MB detail (skip for singles)
+        const count = release.track_count || 0;
+        if (count <= 1) {
+          this.step = 4;
+          this.searchFolders();
+        } else {
+          this._loadMbTracksForSpotiflac(release.id, count);
+        }
+      } else {
+        this.step = 4;
+        this.searchFolders();
+      }
+    },
+
+    async _loadMbTracksForSpotiflac(mbId, knownCount) {
+      this.albumDetailLoading = true;
+      this._isMbTrackList = false;
+      this.step = 2;
+      try {
+        const res = await fetch(`/api/musicbrainz/release/${mbId}`);
+        const detail = await res.json();
+        if (!res.ok) throw new Error(detail.detail || 'Failed to load tracks');
+        const sorted = [...detail.recordings].sort((a, b) =>
+          a.disc_number !== b.disc_number
+            ? a.disc_number - b.disc_number
+            : a.track_number - b.track_number
+        );
+        this.albumDetail = {
+          tracks: sorted.map((rec, i) => ({
+            id: i + 1,               // sequential 1-based position (matches backend filter)
+            track_number: rec.track_number,
+            disc_number: rec.disc_number,
+            title: rec.title,
+          })),
+        };
+        this.selectedTrackIds = this.albumDetail.tracks.map(t => t.id);
+        this._isMbTrackList = true;
+      } catch (_) {
+        // Can't get track list — skip selection, download all
+        this.albumDetail = null;
+        this.step = 4;
+        this.searchFolders();
+      } finally {
+        this.albumDetailLoading = false;
+      }
     },
 
     skipMbStep() {
       this.mbLoading = false;
       this.selectedRelease = null;
+      this._isMbTrackList = false;
       this.step = 4;
       this.searchFolders();
     },
@@ -518,7 +570,8 @@ function musicApp() {
         mb_release_id: this.selectedRelease?.id ?? null,
         dest_artist_folder: this.selectedFolder ? this.selectedFolder.full_path : '',
         new_folder_name: this.createNewFolder ? this.newFolderName.trim() : null,
-        track_ids: this.selectedTrackIds.length ? this.selectedTrackIds : null,
+        track_ids: (!this._isMbTrackList && this.selectedTrackIds.length) ? this.selectedTrackIds : null,
+        spotiflac_track_positions: (this._isMbTrackList && this.selectedTrackIds.length) ? this.selectedTrackIds : null,
       };
 
       let jobId;
@@ -675,6 +728,7 @@ function musicApp() {
       this.overwriteNeeded = false;
       this.overwritePath = '';
       this._spotiflacUrl = null;
+      this._isMbTrackList = false;
     },
   };
 }

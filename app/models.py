@@ -109,6 +109,7 @@ class DownloadRequest(BaseModel):
     dest_artist_folder: str   # full path to existing artist folder, or parent for new
     new_folder_name: Optional[str] = None  # if set, create this new artist folder
     track_ids: Optional[list[int]] = None  # Tidal track IDs to download; None = all tracks
+    spotiflac_track_positions: Optional[list[int]] = None  # 1-based positions in sorted SpotiFLAC output; None = all
 
 
 class DownloadJobResponse(BaseModel):
