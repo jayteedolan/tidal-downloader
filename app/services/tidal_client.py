@@ -118,7 +118,7 @@ async def _get(path: str, params: Optional[dict] = None) -> dict:
     raise RuntimeError(f"All Tidal hosts failed. Last error: {last_error}")
 
 
-def _extract_items_from_response(data: dict | list) -> list:
+def _extract_items_from_response(data) -> list:
     """Pull the raw album items list out of a proxy search response."""
     if isinstance(data, list):
         return data
@@ -143,7 +143,7 @@ def _extract_items_from_response(data: dict | list) -> list:
     return []
 
 
-def _albums_from_track_results(data: dict | list) -> list[AlbumResult]:
+def _albums_from_track_results(data) -> list[AlbumResult]:
     """
     Extract AlbumResult objects from a track search response.
     Track search (s=) returns tracks with embedded album info; each unique
