@@ -3,7 +3,7 @@ import httpx
 from typing import Optional
 from urllib.parse import quote
 from ..models import UrlResolveResult
-from .tidal_client import get_album_id_for_track
+from .tidal_client import get_album_id_for_track, search_albums
 
 ODESLI_API = "https://api.song.link/v1-alpha.1/links"
 
@@ -73,7 +73,10 @@ async def _odesli_lookup(url: str) -> Optional[int]:
     # Odesli returned a track URL — resolve to parent album
     track_id = _extract_tidal_track_id(tidal_url)
     if track_id:
-        return await get_album_id_for_track(track_id)
+        try:
+            return await get_album_id_for_track(track_id)
+        except RuntimeError:
+            return None
 
     return None
 
@@ -131,7 +134,16 @@ async def resolve_url(url: str) -> UrlResolveResult:
             # Look up the track's parent album via the Tidal API.
             track_id = _extract_tidal_track_id(tidal_url)
             if track_id:
-                album_id = await get_album_id_for_track(track_id)
+                album_id = None
+                try:
+                    album_id = await get_album_id_for_track(track_id)
+                except RuntimeError:
+                    # /track/ endpoint down — search by artist+title from Odesli entity
+                    artist_hint = entity.get("artistName", "")
+                    title_hint = entity.get("title", "")
+                    if artist_hint and title_hint:
+                        results = await search_albums(artist=artist_hint, album=title_hint)
+                        album_id = results[0].id if results else None
                 if album_id:
                     return UrlResolveResult(
                         tidal_album_id=album_id,
