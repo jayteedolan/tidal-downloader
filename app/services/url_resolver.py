@@ -142,8 +142,11 @@ async def resolve_url(url: str) -> UrlResolveResult:
                     artist_hint = entity.get("artistName", "")
                     title_hint = entity.get("title", "")
                     if artist_hint and title_hint:
-                        results = await search_albums(artist=artist_hint, album=title_hint)
-                        album_id = results[0].id if results else None
+                        try:
+                            results = await search_albums(artist=artist_hint, album=title_hint)
+                            album_id = results[0].id if results else None
+                        except RuntimeError:
+                            pass
                 if album_id:
                     return UrlResolveResult(
                         tidal_album_id=album_id,
@@ -151,7 +154,23 @@ async def resolve_url(url: str) -> UrlResolveResult:
                         album_title=entity.get("title"),
                         artist=entity.get("artistName"),
                     )
+                # Tidal proxy entirely unavailable — fall back to SpotiFLAC
+                if platform == "spotify":
+                    return UrlResolveResult(
+                        tidal_album_id=None,
+                        spotify_url=url,
+                        source_platform=platform,
+                        album_title=entity.get("title"),
+                        artist=entity.get("artistName"),
+                    )
 
+        # No Tidal link at all — try SpotiFLAC fallback for Spotify URLs
+        if platform == "spotify":
+            return UrlResolveResult(
+                tidal_album_id=None,
+                spotify_url=url,
+                source_platform=platform,
+            )
         raise ValueError("Could not find a Tidal album match via Odesli for this URL.")
 
     raise ValueError(f"Unsupported URL platform. Please provide a Tidal, Spotify, Apple Music, or Qobuz album URL.")

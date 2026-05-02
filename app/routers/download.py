@@ -74,6 +74,34 @@ async def stream_progress(job_id: str):
     return EventSourceResponse(event_generator())
 
 
+async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
+    """Download an album directly via SpotiFLAC when the Tidal proxy is unavailable."""
+    if req.new_folder_name:
+        artist_folder = Path(settings.music_library_path) / file_manager.sanitize_filename(req.new_folder_name)
+        artist_folder.mkdir(parents=True, exist_ok=True)
+    else:
+        artist_folder = Path(req.dest_artist_folder)
+
+    await emit("downloading", title="Downloading via SpotiFLAC…")
+
+    with tempfile.TemporaryDirectory(prefix="sf_") as tmpdir:
+        flac_files = await spotiflac_service.download_album(req.spotify_url, Path(tmpdir))
+
+        if not flac_files:
+            raise RuntimeError("SpotiFLAC failed to download any tracks")
+
+        album_title = req.album_title or "Unknown Album"
+        album_folder = file_manager.create_album_folder(str(artist_folder), album_title, None)
+        total = len(flac_files)
+
+        for idx, (track_num, src_path) in enumerate(sorted(flac_files.items()), start=1):
+            title = src_path.stem
+            await emit("downloading", track_num=idx, total=total, title=title)
+            dest = album_folder / src_path.name
+            file_manager.move_file(src_path, dest)
+            await emit("done", track_num=idx, total=total, title=title, fmt="flac")
+
+
 async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> None:
     """Download a track at LOSSLESS quality; retry at HI_RES_LOSSLESS if the result is M4A."""
     stream = await tidal_client.get_track_stream(track_id, quality="LOSSLESS")
@@ -106,6 +134,15 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
 
     try:
         await emit("starting")
+
+        # SpotiFLAC-only path when Tidal proxy is unavailable
+        if req.tidal_album_id is None:
+            if not req.spotify_url:
+                raise ValueError("No download source available (Tidal proxy down, no Spotify URL)")
+            await _run_spotiflac_only(req, emit)
+            plex_service.trigger_scan()
+            await emit("complete")
+            return
 
         # 1. Fetch Tidal album track list
         album_detail = await tidal_client.get_album(req.tidal_album_id)

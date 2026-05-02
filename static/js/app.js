@@ -50,6 +50,7 @@ function musicApp() {
     overwritePath: '',
     _activeJobId: null,
     _es: null,
+    _spotiflacUrl: null,  // set when Tidal proxy unavailable; triggers SpotiFLAC-only path
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -127,10 +128,35 @@ function musicApp() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Failed to resolve URL');
 
-        // Load the album directly and jump to step 1 pre-selected
-        await this.loadAlbumById(data.tidal_album_id, data.artist || '', data.album_title || '');
-        if (data.album_title) this.searchAlbum = data.album_title;
-        if (data.artist) this.searchArtist = data.artist;
+        if (data.tidal_album_id) {
+          // Normal path: load album from Tidal and jump to step 1 pre-selected
+          await this.loadAlbumById(data.tidal_album_id, data.artist || '', data.album_title || '');
+          if (data.album_title) this.searchAlbum = data.album_title;
+          if (data.artist) this.searchArtist = data.artist;
+        } else if (data.spotify_url) {
+          // SpotiFLAC fallback: Tidal proxy unavailable, download direct from Spotify
+          this._spotiflacUrl = data.spotify_url;
+          this.selectedAlbum = {
+            id: null,
+            title: data.album_title || 'Unknown Album',
+            artist: data.artist || '',
+            cover_url: null,
+            year: null,
+            quality: 'FLAC',
+            release_type: 'SINGLE',
+          };
+          this.albumDetail = null;
+          this.selectedTrackIds = [];
+          this.folderQuery = data.artist || '';
+          this.newFolderName = data.artist || '';
+          this.mbSearchArtist = data.artist || '';
+          this.mbSearchAlbum = data.album_title || '';
+          // Skip track selection — jump straight to MusicBrainz step
+          this.step = 3;
+          this.searchMusicBrainz();
+        } else {
+          throw new Error('Could not resolve this URL');
+        }
         this.urlInput = '';
       } catch (e) {
         this.urlError = e.message;
@@ -380,9 +406,9 @@ function musicApp() {
     // ── Step 5: Download ──────────────────────────────────────────
 
     get canDownload() {
-      return this.selectedAlbum &&
-        (this.selectedFolder || (this.createNewFolder && this.newFolderName.trim())) &&
-        this.selectedTrackIds.length > 0;
+      const hasDestination = this.selectedFolder || (this.createNewFolder && this.newFolderName.trim());
+      const hasTracks = this.selectedTrackIds.length > 0 || this._spotiflacUrl;
+      return this.selectedAlbum && hasDestination && hasTracks;
     },
 
     initTrackStatuses() {
@@ -446,11 +472,13 @@ function musicApp() {
       this.initTrackStatuses();
 
       const body = {
-        tidal_album_id: this.selectedAlbum.id,
+        tidal_album_id: this.selectedAlbum.id ?? null,
+        spotify_url: this._spotiflacUrl ?? null,
+        album_title: this.selectedAlbum.title ?? null,
         mb_release_id: this.selectedRelease?.id ?? null,
         dest_artist_folder: this.selectedFolder ? this.selectedFolder.full_path : '',
         new_folder_name: this.createNewFolder ? this.newFolderName.trim() : null,
-        track_ids: this.selectedTrackIds,
+        track_ids: this.selectedTrackIds.length ? this.selectedTrackIds : null,
       };
 
       let jobId;
@@ -542,13 +570,24 @@ function musicApp() {
       }
 
       if (msg.track_num != null) {
-        const idx = this.trackStatuses.findIndex(t => t.track_num === msg.track_num);
-        if (idx !== -1) {
-          this.trackStatuses[idx].status = msg.status;
-          if (msg.error) this.trackStatuses[idx].error = msg.error;
-          if (msg.track_title) this.trackStatuses[idx].title = msg.track_title;
-          if (msg.format) this.trackStatuses[idx].format = msg.format;
+        let idx = this.trackStatuses.findIndex(t => t.track_num === msg.track_num);
+        if (idx === -1) {
+          // SpotiFLAC path: create entry dynamically
+          this.trackStatuses.push({
+            track_num: msg.track_num,
+            display_num: msg.track_num,
+            disc_num: 1,
+            title: msg.track_title || `Track ${msg.track_num}`,
+            status: 'queued',
+            error: null,
+            format: null,
+          });
+          idx = this.trackStatuses.length - 1;
         }
+        this.trackStatuses[idx].status = msg.status;
+        if (msg.error) this.trackStatuses[idx].error = msg.error;
+        if (msg.track_title) this.trackStatuses[idx].title = msg.track_title;
+        if (msg.format) this.trackStatuses[idx].format = msg.format;
       }
     },
 
@@ -584,6 +623,7 @@ function musicApp() {
       this.trackStatuses = [];
       this.overwriteNeeded = false;
       this.overwritePath = '';
+      this._spotiflacUrl = null;
     },
   };
 }

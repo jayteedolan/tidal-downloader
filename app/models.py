@@ -44,7 +44,8 @@ class UrlResolveRequest(BaseModel):
 
 
 class UrlResolveResult(BaseModel):
-    tidal_album_id: int
+    tidal_album_id: Optional[int] = None  # None when Tidal proxy unavailable
+    spotify_url: Optional[str] = None     # set when falling back to SpotiFLAC
     source_platform: str  # "tidal", "spotify", "apple"
     album_title: Optional[str] = None
     artist: Optional[str] = None
@@ -101,7 +102,9 @@ class FolderMatch(BaseModel):
 # ── Download models ──────────────────────────────────────────────────────────
 
 class DownloadRequest(BaseModel):
-    tidal_album_id: int
+    tidal_album_id: Optional[int] = None  # None for SpotiFLAC-only path
+    spotify_url: Optional[str] = None     # set for SpotiFLAC-only path
+    album_title: Optional[str] = None     # used for folder naming on SpotiFLAC-only path
     mb_release_id: Optional[str] = None  # None = skip MusicBrainz, use Tidal metadata only
     dest_artist_folder: str   # full path to existing artist folder, or parent for new
     new_folder_name: Optional[str] = None  # if set, create this new artist folder
