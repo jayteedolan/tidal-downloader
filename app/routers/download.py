@@ -1,8 +1,12 @@
 import asyncio
 import json
+import logging
+import shutil
 import tempfile
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sse_starlette.sse import EventSourceResponse
@@ -14,7 +18,7 @@ from ..models import (
     RecordingInfo,
     TrackMetadata,
 )
-from ..services import tidal_client, musicbrainz_client, dash_downloader, tagger, file_manager, plex_service
+from ..services import tidal_client, musicbrainz_client, dash_downloader, tagger, file_manager, plex_service, spotiflac_service
 from ..config import settings
 
 router = APIRouter(prefix="/api/download", tags=["download"])
@@ -89,7 +93,7 @@ async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> None:
 
 
 async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue):
-    async def emit(status: str, track_num=None, total=None, title=None, error=None):
+    async def emit(status: str, track_num=None, total=None, title=None, error=None, fmt=None):
         await queue.put({
             "job_id": job_id,
             "status": status,
@@ -97,6 +101,7 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
             "total_tracks": total,
             "track_title": title,
             "error": error,
+            "format": fmt,
         })
 
     try:
@@ -141,7 +146,24 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
         total_discs = (mb_release.disc_count if mb_release else None) \
             or len({t.disc_number for t in tidal_tracks}) or 1
 
-        # 5. Download each track
+        # 5a. Attempt a lossless pre-download via SpotiFLAC (Tidal+Qobuz proxy pool).
+        #     One Odesli call resolves the Tidal album → Spotify URL; SpotiFLAC then
+        #     downloads the whole album to a temp dir.  Tracks it gets as FLAC are used
+        #     in place of the Tidal proxy stream below; proxy is the fallback for any
+        #     SpotiFLAC misses or failures.
+        spotiflac_flac: dict[int, Path] = {}
+        _sf_tmpdir_obj = tempfile.TemporaryDirectory(prefix="sf_")
+        sf_tmpdir = Path(_sf_tmpdir_obj.name)
+        try:
+            await emit("starting", track_num=None, total=total,
+                       title="Checking for lossless source…")
+            spotify_url = await spotiflac_service.get_spotify_url(req.tidal_album_id)
+            if spotify_url:
+                spotiflac_flac = await spotiflac_service.download_album(spotify_url, sf_tmpdir)
+        except Exception as sf_exc:
+            logger.warning("SpotiFLAC pre-download failed: %s", sf_exc)
+
+        # 5b. Download each track
         with tempfile.TemporaryDirectory() as tmpdir:
             for idx, tidal_track in enumerate(tidal_tracks, start=1):
                 track_title = tidal_track.title
@@ -149,7 +171,13 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
 
                 try:
                     tmp_path = Path(tmpdir) / f"track_{idx:03d}.tmp"
-                    await _download_track_prefer_flac(tidal_track.id, tmp_path)
+
+                    # Use SpotiFLAC FLAC when available, otherwise Tidal proxy
+                    sf_file = spotiflac_flac.get(tidal_track.track_number)
+                    if sf_file and sf_file.exists() and tagger.detect_format(sf_file) == "flac":
+                        shutil.copy2(str(sf_file), str(tmp_path))
+                    else:
+                        await _download_track_prefer_flac(tidal_track.id, tmp_path)
 
                     await emit("tagging", track_num=idx, total=total, title=track_title)
 
@@ -186,11 +214,13 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                     dest = album_folder / filename
                     file_manager.move_file(tmp_path, dest)
 
-                    await emit("done", track_num=idx, total=total, title=track_title)
+                    await emit("done", track_num=idx, total=total, title=track_title, fmt=ext)
 
                 except Exception as e:
                     await emit("error", track_num=idx, total=total, title=track_title, error=str(e))
                     # Continue with remaining tracks even if one fails
+
+        _sf_tmpdir_obj.cleanup()
 
         # 6. Trigger Plex scan
         plex_service.trigger_scan()

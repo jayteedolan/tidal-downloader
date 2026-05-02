@@ -8,3 +8,4 @@ rapidfuzz>=3.9
 python-dotenv>=1.0
 pydantic-settings>=2.2
 sse-starlette>=2.1
+SpotiFLAC>=0.4.1
