@@ -7,12 +7,15 @@ function musicApp() {
     urlInput: '',
     urlLoading: false,
     urlError: '',
+    urlStatus: '',
+    _urlTimers: [],
 
     // ── Step 1: Tidal search ─────────────────────────────────────
     searchArtist: '',
     searchAlbum: '',
     searchLoading: false,
     searchError: '',
+    searchStatus: '',
     searchResults: [],
     selectedAlbum: null,
     activeSearchTab: 'albums',   // 'albums' | 'singles'
@@ -115,10 +118,33 @@ function musicApp() {
 
     // ── URL resolve ───────────────────────────────────────────────
 
+    _startUrlStatus() {
+      this._urlTimers.forEach(t => clearTimeout(t));
+      this._urlTimers = [];
+      const steps = [
+        [0,     'Resolving URL…'],
+        [3000,  'Checking Tidal catalog…'],
+        [12000, 'Tidal hosts are slow, still trying…'],
+        [25000, 'Almost there, hang tight…'],
+      ];
+      steps.forEach(([delay, msg]) => {
+        this._urlTimers.push(setTimeout(() => {
+          if (this.urlLoading) this.urlStatus = msg;
+        }, delay));
+      });
+    },
+
+    _clearUrlStatus() {
+      this._urlTimers.forEach(t => clearTimeout(t));
+      this._urlTimers = [];
+      this.urlStatus = '';
+    },
+
     async resolveUrl() {
       if (!this.urlInput.trim()) return;
       this.urlLoading = true;
       this.urlError = '';
+      this._startUrlStatus();
       try {
         const res = await fetch('/api/tidal/resolve-url', {
           method: 'POST',
@@ -162,6 +188,7 @@ function musicApp() {
         this.urlError = e.message;
       } finally {
         this.urlLoading = false;
+        this._clearUrlStatus();
       }
     },
 
@@ -193,6 +220,7 @@ function musicApp() {
       if (!q) return;
       this.searchLoading = true;
       this.searchError = '';
+      this.searchStatus = 'Searching Tidal catalog…';
       this.searchResults = [];
       this.selectedAlbum = null;
       this.activeSearchTab = 'albums';
@@ -210,6 +238,7 @@ function musicApp() {
         this.searchError = e.message;
       } finally {
         this.searchLoading = false;
+        this.searchStatus = '';
       }
     },
 
@@ -595,6 +624,7 @@ function musicApp() {
     resetAll() {
       this._cleanup();
       this.step = 1;
+      this._clearUrlStatus();
       this.urlInput = '';
       this.urlError = '';
       this.searchArtist = '';

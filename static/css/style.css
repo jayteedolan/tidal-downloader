@@ -447,6 +447,28 @@ button {
 .alert-error { background: rgba(224, 85, 85, 0.12); color: var(--red); border: 1px solid rgba(224,85,85,0.3); }
 .alert-success { background: rgba(76, 175, 128, 0.12); color: var(--green); border: 1px solid rgba(76,175,128,0.3); }
 
+.status-text {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-text::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 .divider {
   border: none;
   border-top: 1px solid var(--border);

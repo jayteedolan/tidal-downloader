@@ -47,6 +47,7 @@
             <span x-show="!urlLoading">Resolve</span>
           </button>
         </div>
+        <div class="status-text" x-show="urlStatus" x-text="urlStatus"></div>
         <div class="alert alert-error" x-show="urlError" x-text="urlError"></div>
       </div>
 
@@ -72,6 +73,7 @@
             </button>
           </div>
         </div>
+        <div class="status-text" x-show="searchStatus" x-text="searchStatus"></div>
         <div class="alert alert-error" x-show="searchError" x-text="searchError"></div>
       </div>
 
