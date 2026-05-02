@@ -128,7 +128,7 @@
     ══════════════════════════════════════════════════════════ -->
     <div x-show="step === 2">
       <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
-        <button class="btn-secondary" @click="_isMbTrackList ? (step = 3) : (step = 1)">← Back</button>
+        <button class="btn-secondary" @click="step = 1">← Back</button>
         <span class="text-muted text-sm">
           Select tracks to download from
           <strong x-text="selectedAlbum?.artist"></strong> —
@@ -172,12 +172,15 @@
 
       <div style="margin-top:18px;display:flex;align-items:center;gap:12px">
         <button class="btn-primary"
-                :disabled="albumDetailLoading || !selectedTrackIds.length"
+                :disabled="albumDetailLoading || (!selectedTrackIds.length && !_spotiflacUrl)"
                 @click="confirmTrackSelection()">
           Continue →
         </button>
-        <span x-show="!albumDetailLoading && !selectedTrackIds.length" class="text-muted text-sm">
+        <span x-show="!albumDetailLoading && !selectedTrackIds.length && !_spotiflacUrl" class="text-muted text-sm">
           Select at least one track to continue.
+        </span>
+        <span x-show="!albumDetailLoading && _spotiflacUrl && !selectedTrackIds.length" class="text-muted text-sm">
+          No track list available — all tracks will be downloaded.
         </span>
       </div>
     </div><!-- /step 2 -->
@@ -259,7 +262,7 @@
     ══════════════════════════════════════════════════════════ -->
     <div x-show="step === 4">
       <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
-        <button class="btn-secondary" @click="_isMbTrackList ? (step = 2) : (step = 3)">← Back</button>
+        <button class="btn-secondary" @click="step = 3">← Back</button>
         <span class="text-muted text-sm">Choose or create a destination artist folder</span>
       </div>
 

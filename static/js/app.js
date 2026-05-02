@@ -172,6 +172,7 @@ function musicApp() {
         } else if (data.spotify_url) {
           // SpotiFLAC fallback: Tidal proxy unavailable, download direct from Spotify
           this._spotiflacUrl = data.spotify_url;
+          this._isMbTrackList = false;
           this.selectedAlbum = {
             id: null,
             title: data.album_title || 'Unknown Album',
@@ -182,13 +183,15 @@ function musicApp() {
             release_type: 'SINGLE',
           };
           this.albumDetail = null;
+          this.albumDetailLoading = true;
           this.selectedTrackIds = [];
           this.folderQuery = data.artist || '';
           this.newFolderName = data.artist || '';
           this.mbSearchArtist = data.artist || '';
           this.mbSearchAlbum = data.album_title || '';
-          // Skip track selection — jump straight to MusicBrainz step
-          this.step = 3;
+          // Show track selection first; MB search runs in background and
+          // auto-populates the list when its top result loads
+          this.step = 2;
           this.searchMusicBrainz();
         } else {
           throw new Error('Could not resolve this URL');
@@ -324,13 +327,7 @@ function musicApp() {
 
     confirmTrackSelection() {
       if (!this.selectedTrackIds.length) return;
-      if (this._isMbTrackList) {
-        // MB-based list: step 3 already done; go to folder
-        this.step = 4;
-        this.searchFolders();
-      } else {
-        this.step = 3;
-      }
+      this.step = 3;
     },
 
     // ── Step 3: MusicBrainz ───────────────────────────────────────
@@ -359,24 +356,39 @@ function musicApp() {
         });
         this.mbResults = data;
         if (!data.length) this.mbError = 'No MusicBrainz releases found.';
+
+        // SpotiFLAC path: auto-load track list from the top MB result
+        if (this._spotiflacUrl && this.step === 2 && data.length > 0) {
+          const top = data[0];
+          this.selectedRelease = top;
+          if (top.track_count !== 1) {
+            await this._loadMbTracksForSpotiflac(top.id);
+          } else {
+            this.albumDetailLoading = false;
+          }
+        }
       } catch (e) {
         this.mbError = e.message;
+        if (this._spotiflacUrl && this.step === 2) this.albumDetailLoading = false;
       } finally {
         this.mbLoading = false;
       }
     },
 
     selectRelease(release) {
+      const prevId = this.selectedRelease?.id;
       this.selectedRelease = release;
       if (this._spotiflacUrl) {
-        // SpotiFLAC path: show track selection from MB detail.
-        // Only skip if track_count is explicitly 1 (confirmed single);
-        // null/undefined means unknown — still try to load the track list.
-        if (release.track_count === 1) {
+        if (this._isMbTrackList && release.id === prevId) {
+          // User confirmed the release whose tracks are already loaded → folder
+          this.step = 4;
+          this.searchFolders();
+        } else if (release.track_count === 1) {
           this.step = 4;
           this.searchFolders();
         } else {
-          this._loadMbTracksForSpotiflac(release.id);
+          // Different release selected — reload track list then return to step 2
+          this._loadMbTracksForSpotiflac(release.id).then(() => { this.step = 2; });
         }
       } else {
         this.step = 4;
@@ -387,7 +399,6 @@ function musicApp() {
     async _loadMbTracksForSpotiflac(mbId) {
       this.albumDetailLoading = true;
       this._isMbTrackList = false;
-      this.step = 2;
       try {
         const res = await fetch(`/api/musicbrainz/release/${mbId}`);
         const detail = await res.json();
@@ -399,7 +410,7 @@ function musicApp() {
         );
         this.albumDetail = {
           tracks: sorted.map((rec, i) => ({
-            id: i + 1,               // sequential 1-based position (matches backend filter)
+            id: i + 1,
             track_number: rec.track_number,
             disc_number: rec.disc_number,
             title: rec.title,
@@ -408,10 +419,9 @@ function musicApp() {
         this.selectedTrackIds = this.albumDetail.tracks.map(t => t.id);
         this._isMbTrackList = true;
       } catch (_) {
-        // Can't get track list — skip selection, download all
+        // Couldn't fetch track list — user can still continue (downloads all)
         this.albumDetail = null;
-        this.step = 4;
-        this.searchFolders();
+        this._isMbTrackList = false;
       } finally {
         this.albumDetailLoading = false;
       }
