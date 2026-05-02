@@ -183,15 +183,12 @@ function musicApp() {
             release_type: 'SINGLE',
           };
           this.albumDetail = null;
-          this.albumDetailLoading = true;
           this.selectedTrackIds = [];
           this.folderQuery = data.artist || '';
           this.newFolderName = data.artist || '';
           this.mbSearchArtist = data.artist || '';
           this.mbSearchAlbum = data.album_title || '';
-          // Show track selection first; MB search runs in background and
-          // auto-populates the list when its top result loads
-          this.step = 2;
+          this.step = 3;
           this.searchMusicBrainz();
         } else {
           throw new Error('Could not resolve this URL');
@@ -356,44 +353,17 @@ function musicApp() {
         });
         this.mbResults = data;
         if (!data.length) this.mbError = 'No MusicBrainz releases found.';
-
-        // SpotiFLAC path: auto-load track list from the top MB result
-        if (this._spotiflacUrl && this.step === 2 && data.length > 0) {
-          const top = data[0];
-          this.selectedRelease = top;
-          if (top.track_count !== 1) {
-            await this._loadMbTracksForSpotiflac(top.id);
-          } else {
-            this.albumDetailLoading = false;
-          }
-        }
       } catch (e) {
         this.mbError = e.message;
-        if (this._spotiflacUrl && this.step === 2) this.albumDetailLoading = false;
       } finally {
         this.mbLoading = false;
       }
     },
 
     selectRelease(release) {
-      const prevId = this.selectedRelease?.id;
       this.selectedRelease = release;
-      if (this._spotiflacUrl) {
-        if (this._isMbTrackList && release.id === prevId) {
-          // User confirmed the release whose tracks are already loaded → folder
-          this.step = 4;
-          this.searchFolders();
-        } else if (release.track_count === 1) {
-          this.step = 4;
-          this.searchFolders();
-        } else {
-          // Different release selected — reload track list then return to step 2
-          this._loadMbTracksForSpotiflac(release.id).then(() => { this.step = 2; });
-        }
-      } else {
-        this.step = 4;
-        this.searchFolders();
-      }
+      this.step = 4;
+      this.searchFolders();
     },
 
     async _loadMbTracksForSpotiflac(mbId) {
