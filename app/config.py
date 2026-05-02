@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     plex_music_section: str = Field(default="Music", env="PLEX_MUSIC_SECTION")
     music_library_path: str = Field(default="", env="MUSIC_LIBRARY_PATH")
     port: int = Field(default=8766, env="PORT")
+    spotify_token: str = Field(default="", env="SPOTIFY_TOKEN")
 
     class Config:
         env_file = ".env"

@@ -86,7 +86,9 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
 
     with tempfile.TemporaryDirectory(prefix="sf_") as tmpdir:
         await emit("downloading", title="Downloading via SpotiFLAC — this may take a minute…")
-        flac_files = await spotiflac_service.download_album(req.spotify_url, Path(tmpdir))
+        flac_files = await spotiflac_service.download_album(
+            req.spotify_url, Path(tmpdir), spotify_token=settings.spotify_token
+        )
 
         if not flac_files:
             raise RuntimeError("SpotiFLAC returned no files — all Tidal and Qobuz sources failed")
@@ -110,6 +112,10 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
             source_fmt = tagger.detect_audio_detail(src_path)
             dest = album_folder / src_path.name
             file_manager.move_file(src_path, dest)
+            # Move companion .lrc file if SpotiFLAC produced one
+            lrc_src = src_path.with_suffix(".lrc")
+            if lrc_src.exists():
+                file_manager.move_file(lrc_src, album_folder / lrc_src.name)
             fmt = tagger.detect_audio_detail(dest)
             await emit("done", track_num=idx, total=total, title=title, fmt=fmt, source_fmt=source_fmt)
 
@@ -213,7 +219,9 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                        title="Checking for lossless source…")
             spotify_url = await spotiflac_service.get_spotify_url(req.tidal_album_id)
             if spotify_url:
-                spotiflac_flac = await spotiflac_service.download_album(spotify_url, sf_tmpdir)
+                spotiflac_flac = await spotiflac_service.download_album(
+                    spotify_url, sf_tmpdir, spotify_token=settings.spotify_token
+                )
         except Exception as sf_exc:
             logger.warning("SpotiFLAC pre-download failed: %s", sf_exc)
 
@@ -268,6 +276,12 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                     )
                     dest = album_folder / filename
                     file_manager.move_file(tmp_path, dest)
+
+                    # Move companion .lrc if SpotiFLAC produced one for this track
+                    if sf_file:
+                        lrc_src = sf_file.with_suffix(".lrc")
+                        if lrc_src.exists():
+                            file_manager.move_file(lrc_src, album_folder / lrc_src.name)
 
                     await emit("done", track_num=idx, total=total, title=track_title, fmt=ext, source_fmt=source_fmt)
 

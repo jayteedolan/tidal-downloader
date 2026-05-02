@@ -31,7 +31,7 @@ async def get_spotify_url(tidal_album_id: int) -> Optional[str]:
         return None
 
 
-def _spotiflac_run(spotify_url: str, output_dir: Path) -> dict[int, Path]:
+def _spotiflac_run(spotify_url: str, output_dir: Path, spotify_token: str = "") -> dict[int, Path]:
     """
     Run SpotiFLAC synchronously (intended for use in run_in_executor).
     Returns {track_number: Path} for every FLAC file successfully downloaded.
@@ -44,7 +44,8 @@ def _spotiflac_run(spotify_url: str, output_dir: Path) -> dict[int, Path]:
             output_dir=str(output_dir),
             services=["tidal", "qobuz"],
             quality="HI_RES",
-            embed_lyrics=False,
+            embed_lyrics=bool(spotify_token),
+            lyrics_spotify_token=spotify_token,
             enrich_metadata=False,
             use_track_numbers=True,
             use_album_track_numbers=True,
@@ -64,7 +65,7 @@ def _spotiflac_run(spotify_url: str, output_dir: Path) -> dict[int, Path]:
     return result
 
 
-async def download_album(spotify_url: str, output_dir: Path) -> dict[int, Path]:
+async def download_album(spotify_url: str, output_dir: Path, spotify_token: str = "") -> dict[int, Path]:
     """Async wrapper — runs SpotiFLAC in a thread so the event loop isn't blocked."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _spotiflac_run, spotify_url, output_dir)
+    return await loop.run_in_executor(None, _spotiflac_run, spotify_url, output_dir, spotify_token)
