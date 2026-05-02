@@ -104,7 +104,34 @@ async def resolve_url(url: str) -> UrlResolveResult:
             source_platform="tidal",
         )
 
-    if platform in ("spotify", "apple", "qobuz"):
+    if platform == "spotify":
+        # Spotify URLs go straight to SpotiFLAC — no Tidal proxy involved.
+        # Call Odesli only to harvest album title / artist for display.
+        album_title: Optional[str] = None
+        artist: Optional[str] = None
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+                resp = await client.get(ODESLI_API, params={"url": url, "songIfSingle": "true"})
+            if resp.status_code == 200:
+                data = resp.json()
+                # Prefer the Spotify entity for metadata (it's the input platform)
+                sp_entry = data.get("linksByPlatform", {}).get("spotify", {})
+                entity = data.get("entitiesByUniqueId", {}).get(
+                    sp_entry.get("entityUniqueId", ""), {}
+                )
+                album_title = entity.get("title") or entity.get("albumName")
+                artist = entity.get("artistName")
+        except Exception:
+            pass
+        return UrlResolveResult(
+            tidal_album_id=None,
+            spotify_url=url,
+            source_platform="spotify",
+            album_title=album_title,
+            artist=artist,
+        )
+
+    if platform in ("apple", "qobuz"):
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
             resp = await client.get(
                 ODESLI_API,
@@ -114,7 +141,6 @@ async def resolve_url(url: str) -> UrlResolveResult:
                 raise ValueError(f"Odesli API returned {resp.status_code}. The URL may not be supported.")
             data = resp.json()
 
-        # Find the Tidal entity
         links_by_platform = data.get("linksByPlatform", {})
         if "tidal" in links_by_platform:
             tidal_url = links_by_platform["tidal"].get("url", "")
@@ -130,25 +156,19 @@ async def resolve_url(url: str) -> UrlResolveResult:
                     artist=entity.get("artistName"),
                 )
 
-            # Odesli linked to a Tidal track instead of an album (common for singles).
-            # For Spotify URLs we already have everything SpotiFLAC needs, so skip
-            # the Tidal proxy entirely and return immediately — no 30-second timeouts.
-            # For other platforms, attempt a Tidal proxy lookup as best-effort.
             track_id = _extract_tidal_track_id(tidal_url)
             if track_id:
-                album_id = None
-                if platform != "spotify":
-                    try:
-                        album_id = await get_album_id_for_track(track_id)
-                    except RuntimeError:
-                        artist_hint = entity.get("artistName", "")
-                        title_hint = entity.get("title", "")
-                        if artist_hint and title_hint:
-                            try:
-                                results = await search_albums(artist=artist_hint, album=title_hint)
-                                album_id = results[0].id if results else None
-                            except RuntimeError:
-                                pass
+                try:
+                    album_id = await get_album_id_for_track(track_id)
+                except RuntimeError:
+                    artist_hint = entity.get("artistName", "")
+                    title_hint = entity.get("title", "")
+                    if artist_hint and title_hint:
+                        try:
+                            results = await search_albums(artist=artist_hint, album=title_hint)
+                            album_id = results[0].id if results else None
+                        except RuntimeError:
+                            pass
                 if album_id:
                     return UrlResolveResult(
                         tidal_album_id=album_id,
@@ -156,23 +176,7 @@ async def resolve_url(url: str) -> UrlResolveResult:
                         album_title=entity.get("title"),
                         artist=entity.get("artistName"),
                     )
-                # Spotify: go straight to SpotiFLAC (no proxy wait)
-                if platform == "spotify":
-                    return UrlResolveResult(
-                        tidal_album_id=None,
-                        spotify_url=url,
-                        source_platform=platform,
-                        album_title=entity.get("title"),
-                        artist=entity.get("artistName"),
-                    )
 
-        # No Tidal link at all — try SpotiFLAC fallback for Spotify URLs
-        if platform == "spotify":
-            return UrlResolveResult(
-                tidal_album_id=None,
-                spotify_url=url,
-                source_platform=platform,
-            )
         raise ValueError("Could not find a Tidal album match via Odesli for this URL.")
 
     raise ValueError(f"Unsupported URL platform. Please provide a Tidal, Spotify, Apple Music, or Qobuz album URL.")
