@@ -357,7 +357,7 @@
           </div>
           <div class="summary-block">
             <div class="summary-label">Tracks to download</div>
-            <div class="summary-value" x-text="`${selectedTrackIds.length} of ${albumDetail?.tracks?.length ?? selectedAlbum?.track_count ?? '?'} tracks`"></div>
+            <div class="summary-value" x-text="_spotiflacUrl && !selectedTrackIds.length ? 'Full album via SpotiFLAC' : `${selectedTrackIds.length} of ${albumDetail?.tracks?.length ?? selectedAlbum?.track_count ?? '?'} tracks`"></div>
             <div class="summary-sub" x-text="selectedAlbum?.quality || 'FLAC'"></div>
           </div>
         </div>
@@ -412,7 +412,7 @@
       <div class="complete-banner" x-show="downloadComplete">
         <div class="complete-icon">✓</div>
         <h2>Download complete!</h2>
-        <p x-text="`${selectedTrackIds.length} tracks saved · Plex library scan triggered`"></p>
+        <p x-text="`${trackStatuses.length || selectedTrackIds.length} tracks saved · Plex library scan triggered`"></p>
         <div style="margin-top:20px">
           <button class="btn-primary" @click="resetAll()">Download another album</button>
         </div>
