@@ -52,14 +52,14 @@ def _spotiflac_run(spotify_url: str, output_dir: Path) -> dict[int, Path]:
         )
     except Exception as exc:
         logger.warning("SpotiFLAC run error: %s", exc)
-        return {}
+        raise RuntimeError(str(exc)) from exc
 
+    all_flacs = sorted(output_dir.rglob("*.flac"))
     result: dict[int, Path] = {}
-    for f in output_dir.rglob("*.flac"):
+    for f in all_flacs:
         m = re.match(r"(\d+)", f.name)
-        if m:
-            track_num = int(m.group(1))
-            result[track_num] = f
+        track_num = int(m.group(1)) if m else (len(result) + 1)
+        result[track_num] = f
     logger.info("SpotiFLAC downloaded %d FLAC tracks to %s", len(result), output_dir)
     return result
 

@@ -82,24 +82,27 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
     else:
         artist_folder = Path(req.dest_artist_folder)
 
-    await emit("downloading", title="Downloading via SpotiFLAC…")
+    await emit("downloading", title="Connecting to SpotiFLAC (trying Tidal, then Qobuz)…")
 
     with tempfile.TemporaryDirectory(prefix="sf_") as tmpdir:
+        await emit("downloading", title="Downloading via SpotiFLAC — this may take a minute…")
         flac_files = await spotiflac_service.download_album(req.spotify_url, Path(tmpdir))
 
         if not flac_files:
-            raise RuntimeError("SpotiFLAC failed to download any tracks")
+            raise RuntimeError("SpotiFLAC returned no files — all Tidal and Qobuz sources failed")
 
         album_title = req.album_title or "Unknown Album"
         album_folder = file_manager.create_album_folder(str(artist_folder), album_title, None)
         total = len(flac_files)
 
+        await emit("downloading", title=f"Moving {total} track{'s' if total != 1 else ''} to library…")
         for idx, (track_num, src_path) in enumerate(sorted(flac_files.items()), start=1):
             title = src_path.stem
             await emit("downloading", track_num=idx, total=total, title=title)
             dest = album_folder / src_path.name
             file_manager.move_file(src_path, dest)
-            await emit("done", track_num=idx, total=total, title=title, fmt="flac")
+            fmt = tagger.detect_format(dest)
+            await emit("done", track_num=idx, total=total, title=title, fmt=fmt)
 
 
 async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> None:

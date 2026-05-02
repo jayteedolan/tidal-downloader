@@ -370,6 +370,7 @@
           <span x-show="downloading"><span class="spinner"></span> Downloading…</span>
           <span x-show="!downloading">Start Download</span>
         </button>
+        <div class="status-text" x-show="downloadStatus" x-text="downloadStatus" style="margin-bottom:12px"></div>
 
         <!-- Overwrite confirmation -->
         <div x-show="overwriteNeeded" class="overwrite-modal">

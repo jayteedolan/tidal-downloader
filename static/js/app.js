@@ -48,6 +48,7 @@ function musicApp() {
     downloading: false,
     downloadComplete: false,
     downloadError: '',
+    downloadStatus: '',   // current phase label shown while downloading
     trackStatuses: [],   // [{track_num, display_num, disc_num, title, status}]
     overwriteNeeded: false,
     overwritePath: '',
@@ -586,6 +587,7 @@ function musicApp() {
       if (msg.status === 'complete') {
         this.downloadComplete = true;
         this.downloading = false;
+        this.downloadStatus = '';
         this._cleanup();
         return;
       }
@@ -594,8 +596,14 @@ function musicApp() {
         // Top-level error
         this.downloadError = msg.error || 'Unknown error';
         this.downloading = false;
+        this.downloadStatus = '';
         this._cleanup();
         return;
+      }
+
+      // Phase label updates (no track_num — just a status string)
+      if (msg.track_num == null && msg.track_title) {
+        this.downloadStatus = msg.track_title;
       }
 
       if (msg.track_num != null) {
@@ -650,6 +658,7 @@ function musicApp() {
       this.downloading = false;
       this.downloadComplete = false;
       this.downloadError = '';
+      this.downloadStatus = '';
       this.trackStatuses = [];
       this.overwriteNeeded = false;
       this.overwritePath = '';
