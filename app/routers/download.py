@@ -74,6 +74,18 @@ async def stream_progress(job_id: str):
     return EventSourceResponse(event_generator())
 
 
+def _write_lrc_from_flac(flac_path: Path) -> None:
+    """Extract embedded LYRICS FLAC tag and write a companion .lrc file for Plex."""
+    try:
+        from mutagen.flac import FLAC as _FLAC
+        audio = _FLAC(str(flac_path))
+        lyrics_list = audio.get("lyrics") or audio.get("LYRICS")
+        if lyrics_list and lyrics_list[0].strip():
+            flac_path.with_suffix(".lrc").write_text(lyrics_list[0], encoding="utf-8")
+    except Exception:
+        pass
+
+
 async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
     """Download an album directly via SpotiFLAC when the Tidal proxy is unavailable."""
     if req.new_folder_name:
@@ -112,10 +124,7 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
             source_fmt = tagger.detect_audio_detail(src_path)
             dest = album_folder / src_path.name
             file_manager.move_file(src_path, dest)
-            # Move companion .lrc file if SpotiFLAC produced one
-            lrc_src = src_path.with_suffix(".lrc")
-            if lrc_src.exists():
-                file_manager.move_file(lrc_src, album_folder / lrc_src.name)
+            _write_lrc_from_flac(dest)
             fmt = tagger.detect_audio_detail(dest)
             await emit("done", track_num=idx, total=total, title=title, fmt=fmt, source_fmt=source_fmt)
 
@@ -277,11 +286,8 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                     dest = album_folder / filename
                     file_manager.move_file(tmp_path, dest)
 
-                    # Move companion .lrc if SpotiFLAC produced one for this track
-                    if sf_file:
-                        lrc_src = sf_file.with_suffix(".lrc")
-                        if lrc_src.exists():
-                            file_manager.move_file(lrc_src, album_folder / lrc_src.name)
+                    # Write .lrc from embedded lyrics tag (Plex reads external .lrc)
+                    _write_lrc_from_flac(dest)
 
                     await emit("done", track_num=idx, total=total, title=track_title, fmt=ext, source_fmt=source_fmt)
 

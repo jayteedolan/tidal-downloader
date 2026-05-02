@@ -480,30 +480,27 @@ button {
 .text-sm { font-size: 0.82rem; }
 
 .complete-banner-inline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
   padding: 20px 24px;
-  background: rgba(76, 175, 128, 0.12);
-  border: 1px solid rgba(76, 175, 128, 0.35);
+  background: rgba(76, 175, 128, 0.1);
+  border: 1px solid rgba(76, 175, 128, 0.3);
   border-radius: var(--radius);
 }
 .complete-banner-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 .complete-inline-icon {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: rgba(76, 175, 128, 0.2);
+  background: rgba(76, 175, 128, 0.25);
   color: var(--green);
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 700;
   flex-shrink: 0;
 }
