@@ -118,54 +118,70 @@ async def _get(path: str, params: Optional[dict] = None) -> dict:
     raise RuntimeError(f"All Tidal hosts failed. Last error: {last_error}")
 
 
-async def search_albums(query: str = "", artist: str = "", album: str = "") -> list[AlbumResult]:
-    if artist and album:
-        params = {"ar": artist, "al": album}
-    elif artist:
-        params = {"al": artist}
-    elif album:
-        params = {"al": album}
-    else:
-        params = {"al": query}
-    data = await _get("/search/", params=params)
-
-    logger.debug("search_albums response type=%s keys=%s",
-                 type(data).__name__,
-                 list(data.keys()) if isinstance(data, dict) else "N/A")
-
-    items = []
+def _extract_items_from_response(data: dict | list) -> list:
+    """Pull the raw album items list out of a proxy search response."""
     if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        # Try top-level items
-        items = data.get("items") or []
-        # Try data.items
-        if not items:
-            items = data.get("data", {}).get("items") or []
-        # Try albums key (dict or list)
-        if not items and "albums" in data:
-            albums_data = data["albums"]
-            if isinstance(albums_data, dict):
-                items = albums_data.get("items", [])
-            elif isinstance(albums_data, list):
-                items = albums_data
-        # Try nested data.albums
-        if not items:
-            data_inner = data.get("data") or {}
-            if isinstance(data_inner, dict) and "albums" in data_inner:
-                albums_data = data_inner["albums"]
-                if isinstance(albums_data, dict):
-                    items = albums_data.get("items", [])
-                elif isinstance(albums_data, list):
-                    items = albums_data
+        return data
+    if not isinstance(data, dict):
+        return []
+    for candidate in (
+        data.get("items"),
+        (data.get("data") or {}).get("items"),
+    ):
+        if candidate:
+            return candidate
+    for source in (data, data.get("data") or {}):
+        if not isinstance(source, dict):
+            continue
+        albums_data = source.get("albums")
+        if isinstance(albums_data, dict):
+            items = albums_data.get("items", [])
+            if items:
+                return items
+        elif isinstance(albums_data, list) and albums_data:
+            return albums_data
+    return []
 
-    logger.debug("search_albums found %d raw items", len(items))
 
+def _albums_from_track_results(data: dict | list) -> list[AlbumResult]:
+    """
+    Extract AlbumResult objects from a track search response.
+    Track search (s=) returns tracks with embedded album info; each unique
+    parent album becomes one AlbumResult with release_type='SINGLE'.
+    """
+    items = []
+    if isinstance(data, dict):
+        inner = data.get("data") or data
+        if isinstance(inner, dict):
+            items = inner.get("items", [])
+    seen_ids: set[int] = set()
+    results = []
+    for item in items:
+        track = item.get("item", item)
+        album_sub = track.get("album")
+        if not isinstance(album_sub, dict) or not album_sub.get("id"):
+            continue
+        album_id = int(album_sub["id"])
+        if album_id in seen_ids:
+            continue
+        seen_ids.add(album_id)
+        artist = (track.get("artists") or [{}])[0].get("name", "")
+        results.append(AlbumResult(
+            id=album_id,
+            title=album_sub.get("title", ""),
+            artist=artist,
+            cover_url=_cover_url(album_sub.get("cover")),
+            explicit=bool(track.get("explicit", False)),
+            release_type="SINGLE",
+        ))
+    return results
+
+
+def _parse_items(items: list) -> list[AlbumResult]:
     seen_ids: set[int] = set()
     results = []
     for item in items:
         album_data = item.get("item", item)
-        # If the item is a track (has trackNumber), pull out its embedded album object
         if "trackNumber" in album_data or "volumeNumber" in album_data:
             album_data = album_data.get("album", album_data)
         try:
@@ -178,8 +194,186 @@ async def search_albums(query: str = "", artist: str = "", album: str = "") -> l
     return results
 
 
-async def get_album(album_id: int) -> AlbumDetail:
-    data = await _get("/album/", params={"id": album_id})
+async def search_albums(query: str = "", artist: str = "", album: str = "") -> list[AlbumResult]:
+    # The proxy's 'ar' (artist) parameter does not filter results — only 'al' works.
+    # When both artist and album are given, run three parallel searches:
+    #   al=<artist>        → artist's catalog (album/EP releases)
+    #   al=<album>         → releases whose title matches the album name
+    #   s=<artist> <album> → track search, which surfaces singles not indexed as
+    #                        standalone album releases (e.g. JPEGMAFIA "babygirl")
+    # Results are merged and ranked: releases matching both artist+title first.
+    if artist and album:
+        track_query = f"{artist} {album}"
+        artist_data, album_data, track_data = await asyncio.gather(
+            _get("/search/", params={"al": artist}),
+            _get("/search/", params={"al": album}),
+            _get("/search/", params={"s": track_query}),
+        )
+        artist_items = _extract_items_from_response(artist_data)
+        album_items = _extract_items_from_response(album_data)
+        track_albums = _albums_from_track_results(track_data)
+
+        # Deduplicate raw items (artist + album searches), preserving order
+        seen: set[int] = set()
+        merged: list = []
+        for item in artist_items + album_items:
+            raw = item.get("item", item)
+            id_ = raw.get("id")
+            if id_ and id_ not in seen:
+                seen.add(id_)
+                merged.append(item)
+
+        # Rank: items where BOTH artist name and album title match score highest
+        artist_lc = artist.lower()
+        album_lc = album.lower()
+
+        def _rank(item) -> int:
+            raw = item.get("item", item)
+            name = ""
+            if isinstance(raw.get("artist"), dict):
+                name = raw["artist"].get("name", "").lower()
+            elif raw.get("artists"):
+                name = (raw["artists"][0] or {}).get("name", "").lower()
+            title = raw.get("title", "").lower()
+            score = 0
+            if artist_lc in name or name in artist_lc:
+                score += 10
+            if album_lc in title or title in album_lc:
+                score += 5
+            return -score  # descending
+
+        merged.sort(key=_rank)
+        parsed = _parse_items(merged)
+
+        # Prepend track-derived singles whose album IDs aren't already in results,
+        # filtering to those where the artist name actually matches.
+        parsed_ids = {r.id for r in parsed}
+        for ta in track_albums:
+            if ta.id not in parsed_ids and artist_lc in ta.artist.lower():
+                parsed.insert(0, ta)
+                parsed_ids.add(ta.id)
+
+        logger.debug("search_albums (artist+album) total %d items", len(parsed))
+        return parsed
+
+    if artist:
+        data = await _get("/search/", params={"al": artist})
+    elif album:
+        data = await _get("/search/", params={"al": album})
+    else:
+        data = await _get("/search/", params={"al": query})
+
+    logger.debug("search_albums response type=%s keys=%s",
+                 type(data).__name__,
+                 list(data.keys()) if isinstance(data, dict) else "N/A")
+    items = _extract_items_from_response(data)
+    logger.debug("search_albums found %d raw items", len(items))
+    return _parse_items(items)
+
+
+def _extract_tracks_for_album(items: list, album_id: int,
+                               seen: set, tracks: list, album_meta_holder: list) -> None:
+    """Pull TrackInfo objects out of raw search items, filtering to album_id."""
+    for t in items:
+        alb = t.get("album", {})
+        if not isinstance(alb, dict) or int(alb.get("id", 0)) != album_id:
+            continue
+        if not album_meta_holder:
+            album_meta_holder.append(alb)
+        track_id = t.get("id")
+        if track_id and track_id not in seen:
+            seen.add(track_id)
+            tracks.append(TrackInfo(
+                id=track_id,
+                title=t.get("title", ""),
+                track_number=t.get("trackNumber", 1),
+                disc_number=t.get("volumeNumber", 1),
+                duration=t.get("duration"),
+            ))
+
+
+async def _get_album_via_artist_search(album_id: int, artist_hint: str, title_hint: str = "") -> AlbumDetail:
+    """
+    Reconstruct AlbumDetail by running two parallel searches:
+      1. a=ARTIST — broad artist catalogue (catches most tracks in one page)
+      2. s=ARTIST TITLE — targeted track search (catches singles / tracks
+         that fall past the first page of the artist search)
+    Used when the /album/ endpoint is rate-limited (HTTP 429).
+    """
+    seen_track_ids: set[int] = set()
+    tracks: list[TrackInfo] = []
+    album_meta_holder: list[dict] = []
+
+    queries: list[dict] = [{"a": artist_hint, "limit": 300}]
+    if title_hint:
+        queries.append({"s": f"{artist_hint} {title_hint}", "limit": 100})
+    else:
+        queries.append({"s": artist_hint, "limit": 100})
+
+    results = await asyncio.gather(
+        *[_get("/search/", params=q) for q in queries],
+        return_exceptions=True,
+    )
+
+    for resp in results:
+        if isinstance(resp, Exception):
+            logger.debug("_get_album_via_artist_search sub-search failed: %s", resp)
+            continue
+        inner = resp.get("data", {})
+        if not isinstance(inner, dict):
+            continue
+
+        # a= response: items are under data.tracks.items
+        tracks_section = inner.get("tracks", {})
+        if isinstance(tracks_section, dict):
+            _extract_tracks_for_album(
+                tracks_section.get("items", []),
+                album_id, seen_track_ids, tracks, album_meta_holder,
+            )
+
+        # s= response: items are directly under data.items (flat list)
+        flat_items = inner.get("items", [])
+        for wrapped in flat_items:
+            _extract_tracks_for_album(
+                [wrapped.get("item", wrapped)],
+                album_id, seen_track_ids, tracks, album_meta_holder,
+            )
+
+    if not tracks:
+        raise RuntimeError(
+            f"Tidal proxy rate-limited the album endpoint (HTTP 429) and the "
+            f"search fallback found no tracks for album {album_id}. "
+            f"Please try again in a moment."
+        )
+
+    tracks.sort(key=lambda t: (t.disc_number, t.track_number))
+
+    album_meta = album_meta_holder[0] if album_meta_holder else {}
+    release_date = album_meta.get("releaseDate", "")
+    year = release_date[:4] if release_date else None
+    album = AlbumResult(
+        id=album_id,
+        title=album_meta.get("title", title_hint),
+        artist=artist_hint,
+        cover_url=_cover_url(album_meta.get("cover")),
+        year=year,
+        track_count=len(tracks),
+    )
+    logger.info(
+        "get_album fallback recovered %d tracks for album %d via search",
+        len(tracks), album_id,
+    )
+    return AlbumDetail(album=album, tracks=tracks)
+
+
+async def get_album(album_id: int, *, artist_hint: str = "", title_hint: str = "") -> AlbumDetail:
+    try:
+        data = await _get("/album/", params={"id": album_id})
+    except RuntimeError as exc:
+        if artist_hint:
+            logger.warning("get_album /album/ failed (%s), trying search fallback", exc)
+            return await _get_album_via_artist_search(album_id, artist_hint, title_hint)
+        raise
 
     logger.debug("get_album response type=%s keys=%s",
                  type(data).__name__,

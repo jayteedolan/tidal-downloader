@@ -70,6 +70,24 @@ async def stream_progress(job_id: str):
     return EventSourceResponse(event_generator())
 
 
+async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> None:
+    """Download a track at LOSSLESS quality; retry at HI_RES_LOSSLESS if the result is M4A."""
+    stream = await tidal_client.get_track_stream(track_id, quality="LOSSLESS")
+    await dash_downloader.download_flac(stream, tmp_path)
+
+    if tagger.detect_format(tmp_path) == "m4a":
+        tmp_retry = tmp_path.with_suffix(".hires.tmp")
+        try:
+            stream2 = await tidal_client.get_track_stream(track_id, quality="HI_RES_LOSSLESS")
+            await dash_downloader.download_flac(stream2, tmp_retry)
+            if tagger.detect_format(tmp_retry) == "flac":
+                tmp_retry.replace(tmp_path)
+            else:
+                tmp_retry.unlink(missing_ok=True)
+        except Exception:
+            tmp_retry.unlink(missing_ok=True)
+
+
 async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue):
     async def emit(status: str, track_num=None, total=None, title=None, error=None):
         await queue.put({
@@ -130,11 +148,8 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                 await emit("downloading", track_num=idx, total=total, title=track_title)
 
                 try:
-                    # Get stream info
-                    stream = await tidal_client.get_track_stream(tidal_track.id, quality="LOSSLESS")
-
-                    tmp_path = Path(tmpdir) / f"track_{idx:03d}.flac"
-                    await dash_downloader.download_flac(stream, tmp_path)
+                    tmp_path = Path(tmpdir) / f"track_{idx:03d}.tmp"
+                    await _download_track_prefer_flac(tidal_track.id, tmp_path)
 
                     await emit("tagging", track_num=idx, total=total, title=track_title)
 
@@ -159,13 +174,14 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                         musicbrainz_artist_id=mb_release.artist_id if mb_release else None,
                     )
 
-                    await tagger.tag_flac(tmp_path, meta)
+                    ext = await tagger.tag_file(tmp_path, meta)
 
                     filename = file_manager.track_filename(
                         tidal_track.track_number,
                         tidal_track.disc_number,
                         total_discs,
                         rec.title if rec else tidal_track.title,
+                        ext=ext,
                     )
                     dest = album_folder / filename
                     file_manager.move_file(tmp_path, dest)

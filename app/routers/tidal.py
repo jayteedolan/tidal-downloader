@@ -20,9 +20,9 @@ async def search_albums(
 
 
 @router.get("/album/{album_id}", response_model=AlbumDetail)
-async def get_album(album_id: int):
+async def get_album(album_id: int, artist: str = Query(""), title: str = Query("")):
     try:
-        return await tidal_client.get_album(album_id)
+        return await tidal_client.get_album(album_id, artist_hint=artist, title_hint=title)
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
