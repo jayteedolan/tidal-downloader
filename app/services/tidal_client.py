@@ -271,8 +271,109 @@ async def search_albums(query: str = "", artist: str = "", album: str = "") -> l
     return _parse_items(items)
 
 
-async def get_album(album_id: int) -> AlbumDetail:
-    data = await _get("/album/", params={"id": album_id})
+def _extract_tracks_for_album(items: list, album_id: int,
+                               seen: set, tracks: list, album_meta_holder: list) -> None:
+    """Pull TrackInfo objects out of raw search items, filtering to album_id."""
+    for t in items:
+        alb = t.get("album", {})
+        if not isinstance(alb, dict) or int(alb.get("id", 0)) != album_id:
+            continue
+        if not album_meta_holder:
+            album_meta_holder.append(alb)
+        track_id = t.get("id")
+        if track_id and track_id not in seen:
+            seen.add(track_id)
+            tracks.append(TrackInfo(
+                id=track_id,
+                title=t.get("title", ""),
+                track_number=t.get("trackNumber", 1),
+                disc_number=t.get("volumeNumber", 1),
+                duration=t.get("duration"),
+            ))
+
+
+async def _get_album_via_artist_search(album_id: int, artist_hint: str, title_hint: str = "") -> AlbumDetail:
+    """
+    Reconstruct AlbumDetail by running two parallel searches:
+      1. a=ARTIST — broad artist catalogue (catches most tracks in one page)
+      2. s=ARTIST TITLE — targeted track search (catches singles / tracks
+         that fall past the first page of the artist search)
+    Used when the /album/ endpoint is rate-limited (HTTP 429).
+    """
+    seen_track_ids: set[int] = set()
+    tracks: list[TrackInfo] = []
+    album_meta_holder: list[dict] = []
+
+    queries: list[dict] = [{"a": artist_hint, "limit": 300}]
+    if title_hint:
+        queries.append({"s": f"{artist_hint} {title_hint}", "limit": 100})
+    else:
+        queries.append({"s": artist_hint, "limit": 100})
+
+    results = await asyncio.gather(
+        *[_get("/search/", params=q) for q in queries],
+        return_exceptions=True,
+    )
+
+    for resp in results:
+        if isinstance(resp, Exception):
+            logger.debug("_get_album_via_artist_search sub-search failed: %s", resp)
+            continue
+        inner = resp.get("data", {})
+        if not isinstance(inner, dict):
+            continue
+
+        # a= response: items are under data.tracks.items
+        tracks_section = inner.get("tracks", {})
+        if isinstance(tracks_section, dict):
+            _extract_tracks_for_album(
+                tracks_section.get("items", []),
+                album_id, seen_track_ids, tracks, album_meta_holder,
+            )
+
+        # s= response: items are directly under data.items (flat list)
+        flat_items = inner.get("items", [])
+        for wrapped in flat_items:
+            _extract_tracks_for_album(
+                [wrapped.get("item", wrapped)],
+                album_id, seen_track_ids, tracks, album_meta_holder,
+            )
+
+    if not tracks:
+        raise RuntimeError(
+            f"Tidal proxy rate-limited the album endpoint (HTTP 429) and the "
+            f"search fallback found no tracks for album {album_id}. "
+            f"Please try again in a moment."
+        )
+
+    tracks.sort(key=lambda t: (t.disc_number, t.track_number))
+
+    album_meta = album_meta_holder[0] if album_meta_holder else {}
+    release_date = album_meta.get("releaseDate", "")
+    year = release_date[:4] if release_date else None
+    album = AlbumResult(
+        id=album_id,
+        title=album_meta.get("title", title_hint),
+        artist=artist_hint,
+        cover_url=_cover_url(album_meta.get("cover")),
+        year=year,
+        track_count=len(tracks),
+    )
+    logger.info(
+        "get_album fallback recovered %d tracks for album %d via search",
+        len(tracks), album_id,
+    )
+    return AlbumDetail(album=album, tracks=tracks)
+
+
+async def get_album(album_id: int, *, artist_hint: str = "", title_hint: str = "") -> AlbumDetail:
+    try:
+        data = await _get("/album/", params={"id": album_id})
+    except RuntimeError as exc:
+        if artist_hint:
+            logger.warning("get_album /album/ failed (%s), trying search fallback", exc)
+            return await _get_album_via_artist_search(album_id, artist_hint, title_hint)
+        raise
 
     logger.debug("get_album response type=%s keys=%s",
                  type(data).__name__,

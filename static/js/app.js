@@ -125,7 +125,7 @@ function musicApp() {
         if (!res.ok) throw new Error(data.detail || 'Failed to resolve URL');
 
         // Load the album directly and jump to step 1 pre-selected
-        await this.loadAlbumById(data.tidal_album_id);
+        await this.loadAlbumById(data.tidal_album_id, data.artist || '', data.album_title || '');
         if (data.album_title) this.searchAlbum = data.album_title;
         if (data.artist) this.searchArtist = data.artist;
         this.urlInput = '';
@@ -136,11 +136,15 @@ function musicApp() {
       }
     },
 
-    async loadAlbumById(albumId) {
+    async loadAlbumById(albumId, artist = '', title = '') {
       this.searchLoading = true;
       this.searchError = '';
       try {
-        const res = await fetch(`/api/tidal/album/${albumId}`);
+        const params = new URLSearchParams();
+        if (artist) params.set('artist', artist);
+        if (title) params.set('title', title);
+        const qs = params.toString() ? '?' + params : '';
+        const res = await fetch(`/api/tidal/album/${albumId}${qs}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Failed to load album');
         // Wrap as a single search result
@@ -195,19 +199,22 @@ function musicApp() {
       if (detail) {
         this.selectedTrackIds = (detail.tracks || []).map(t => t.id);
       } else {
-        // Load album detail with one automatic retry on failure/empty tracks
+        // Load album detail (pass artist/title so backend can use search fallback)
         this.albumDetailLoading = true;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          if (attempt > 0) await new Promise(r => setTimeout(r, 1000));
-          try {
-            const res = await fetch(`/api/tidal/album/${album.id}`);
-            const d = await res.json();
-            if (res.ok && d.tracks?.length > 0) {
-              this.albumDetail = d;
-              this.selectedTrackIds = d.tracks.map(t => t.id);
-              break;
-            }
-          } catch (_) {}
+        const artistEnc = encodeURIComponent(album.artist || '');
+        const titleEnc = encodeURIComponent(album.title || '');
+        const qs = `?artist=${artistEnc}&title=${titleEnc}`;
+        try {
+          const res = await fetch(`/api/tidal/album/${album.id}${qs}`);
+          const d = await res.json();
+          if (res.ok && d.tracks?.length > 0) {
+            this.albumDetail = d;
+            this.selectedTrackIds = d.tracks.map(t => t.id);
+          } else if (!res.ok) {
+            throw new Error(d.detail || 'Failed to load album tracks');
+          }
+        } catch (e) {
+          this.searchError = e.message;
         }
         this.albumDetailLoading = false;
       }
