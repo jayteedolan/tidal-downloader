@@ -369,13 +369,14 @@ function musicApp() {
     selectRelease(release) {
       this.selectedRelease = release;
       if (this._spotiflacUrl) {
-        // SpotiFLAC path: show track selection from MB detail (skip for singles)
-        const count = release.track_count || 0;
-        if (count <= 1) {
+        // SpotiFLAC path: show track selection from MB detail.
+        // Only skip if track_count is explicitly 1 (confirmed single);
+        // null/undefined means unknown — still try to load the track list.
+        if (release.track_count === 1) {
           this.step = 4;
           this.searchFolders();
         } else {
-          this._loadMbTracksForSpotiflac(release.id, count);
+          this._loadMbTracksForSpotiflac(release.id);
         }
       } else {
         this.step = 4;
@@ -383,7 +384,7 @@ function musicApp() {
       }
     },
 
-    async _loadMbTracksForSpotiflac(mbId, knownCount) {
+    async _loadMbTracksForSpotiflac(mbId) {
       this.albumDetailLoading = true;
       this._isMbTrackList = false;
       this.step = 2;
