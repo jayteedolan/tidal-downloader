@@ -103,7 +103,9 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
 
         await emit("downloading", title=f"Moving {total} track{'s' if total != 1 else ''} to library…")
         for idx, (track_num, src_path) in enumerate(sorted_tracks, start=1):
-            title = src_path.stem
+            stem = src_path.stem
+            # SpotiFLAC names files "TITLE - ARTISTS"; strip the artist suffix
+            title = stem.split(" - ")[0].strip() if " - " in stem else stem
             await emit("downloading", track_num=idx, total=total, title=title)
             source_fmt = tagger.detect_audio_detail(src_path)
             dest = album_folder / src_path.name
