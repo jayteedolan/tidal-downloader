@@ -44,7 +44,10 @@ def _spotiflac_run(spotify_url: str, output_dir: Path, spotify_token: str = "") 
             output_dir=str(output_dir),
             services=["tidal", "qobuz"],
             quality="HI_RES",
-            embed_lyrics=bool(spotify_token),
+            embed_lyrics=True,
+            # lrclib first: crowd-sourced, uncensored, synced LRC
+            # Spotify as fallback (may censor explicit words via its API)
+            lyrics_providers=["lrclib", "spotify", "musixmatch"],
             lyrics_spotify_token=spotify_token,
             enrich_metadata=False,
             use_track_numbers=True,

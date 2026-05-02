@@ -50,6 +50,7 @@ function musicApp() {
     downloadError: '',
     downloadStatus: '',   // current phase label shown while downloading
     trackStatuses: [],   // [{track_num, display_num, disc_num, title, status}]
+    _totalTracks: 0,      // total from SSE, used in completion banner
     overwriteNeeded: false,
     overwritePath: '',
     _activeJobId: null,
@@ -542,6 +543,7 @@ function musicApp() {
       this.downloading = true;
       this.downloadComplete = false;
       this.downloadError = '';
+      this._totalTracks = 0;
       this.initTrackStatuses();
 
       const body = {
@@ -650,6 +652,8 @@ function musicApp() {
         this.downloadStatus = msg.track_title;
       }
 
+      if (msg.total_tracks) this._totalTracks = msg.total_tracks;
+
       if (msg.track_num != null) {
         let idx = this.trackStatuses.findIndex(t => t.track_num === msg.track_num);
         if (idx === -1) {
@@ -706,6 +710,7 @@ function musicApp() {
       this.downloadError = '';
       this.downloadStatus = '';
       this.trackStatuses = [];
+      this._totalTracks = 0;
       this.overwriteNeeded = false;
       this.overwritePath = '';
       this._spotiflacUrl = null;

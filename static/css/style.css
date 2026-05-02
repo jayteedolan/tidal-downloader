@@ -480,16 +480,20 @@ button {
 .text-sm { font-size: 0.82rem; }
 
 .complete-banner-inline {
-  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
   background: rgba(76, 175, 128, 0.1);
   border: 1px solid rgba(76, 175, 128, 0.3);
   border-radius: var(--radius);
+  flex-wrap: wrap;
 }
 .complete-banner-left {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
 }
 .complete-inline-icon {
   display: inline-flex;

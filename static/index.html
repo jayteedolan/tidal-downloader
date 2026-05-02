@@ -340,43 +340,44 @@
         <button class="btn-secondary" @click="step = 4" :disabled="downloading">← Back</button>
       </div>
 
-      <!-- Completion banner (shown above everything when done) -->
+      <!-- Completion banner (shown above summary when done) -->
       <div x-show="downloadComplete" class="complete-banner-inline" style="margin-bottom:20px">
         <div class="complete-banner-left">
           <span class="complete-inline-icon">✓</span>
           <div>
             <div class="complete-banner-title">Download complete!</div>
-            <div class="complete-banner-sub" x-text="`${trackStatuses.length || selectedTrackIds.length} tracks saved · Plex library scan triggered`"></div>
+            <div class="complete-banner-sub" x-text="`${_totalTracks || trackStatuses.length} tracks saved · Plex library scan triggered`"></div>
           </div>
         </div>
         <button class="btn-primary" @click="resetAll()">Download another album</button>
       </div>
 
-      <!-- Summary + controls (hidden once download complete) -->
-      <div x-show="!downloadComplete">
-        <div class="summary-grid" style="margin-bottom:16px">
-          <div class="summary-block">
-            <div class="summary-label">Tidal Album</div>
-            <div class="summary-value" x-text="selectedAlbum?.title"></div>
-            <div class="summary-sub" x-text="selectedAlbum?.artist"></div>
-          </div>
-          <div class="summary-block">
-            <div class="summary-label">MusicBrainz Release</div>
-            <div class="summary-value" x-text="selectedRelease?.title"></div>
-            <div class="summary-sub" x-text="mbMeta(selectedRelease || {})"></div>
-          </div>
-          <div class="summary-block">
-            <div class="summary-label">Destination</div>
-            <div class="summary-value" x-text="destDescription"></div>
-            <div class="summary-sub" x-text="`Album folder: ${albumFolderPreview}`"></div>
-          </div>
-          <div class="summary-block">
-            <div class="summary-label">Tracks to download</div>
-            <div class="summary-value" x-text="_spotiflacUrl && !_isMbTrackList ? 'Full album via SpotiFLAC' : `${selectedTrackIds.length} of ${albumDetail?.tracks?.length ?? selectedAlbum?.track_count ?? '?'} tracks`"></div>
-            <div class="summary-sub" x-text="selectedAlbum?.quality || 'FLAC'"></div>
-          </div>
+      <!-- Summary grid (always visible at step 5) -->
+      <div class="summary-grid" style="margin-bottom:16px">
+        <div class="summary-block">
+          <div class="summary-label">Tidal Album</div>
+          <div class="summary-value" x-text="selectedAlbum?.title"></div>
+          <div class="summary-sub" x-text="selectedAlbum?.artist"></div>
         </div>
+        <div class="summary-block">
+          <div class="summary-label">MusicBrainz Release</div>
+          <div class="summary-value" x-text="selectedRelease?.title"></div>
+          <div class="summary-sub" x-text="mbMeta(selectedRelease || {})"></div>
+        </div>
+        <div class="summary-block">
+          <div class="summary-label">Destination</div>
+          <div class="summary-value" x-text="destDescription"></div>
+          <div class="summary-sub" x-text="`Album folder: ${albumFolderPreview}`"></div>
+        </div>
+        <div class="summary-block">
+          <div class="summary-label">Tracks to download</div>
+          <div class="summary-value" x-text="_spotiflacUrl && !_isMbTrackList ? 'Full album via SpotiFLAC' : `${selectedTrackIds.length} of ${albumDetail?.tracks?.length ?? selectedAlbum?.track_count ?? '?'} tracks`"></div>
+          <div class="summary-sub" x-text="selectedAlbum?.quality || 'FLAC'"></div>
+        </div>
+      </div>
 
+      <!-- Download controls (hidden once download is complete) -->
+      <div x-show="!downloadComplete">
         <div class="alert alert-error" x-show="downloadError" x-text="downloadError"></div>
 
         <button class="btn-primary" style="margin-bottom:20px"
@@ -436,7 +437,7 @@
 
   </div><!-- /container -->
 
-  <script src="/static/js/app.js?v=3"></script>
+  <script src="/static/js/app.js?v=4"></script>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </body>
 </html>
