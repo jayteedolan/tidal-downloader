@@ -99,16 +99,19 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
         for idx, (track_num, src_path) in enumerate(sorted(flac_files.items()), start=1):
             title = src_path.stem
             await emit("downloading", track_num=idx, total=total, title=title)
+            source_fmt = tagger.detect_audio_detail(src_path)
             dest = album_folder / src_path.name
             file_manager.move_file(src_path, dest)
             fmt = tagger.detect_audio_detail(dest)
-            await emit("done", track_num=idx, total=total, title=title, fmt=fmt)
+            await emit("done", track_num=idx, total=total, title=title, fmt=fmt, source_fmt=source_fmt)
 
 
-async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> None:
-    """Download a track at LOSSLESS quality; retry at HI_RES_LOSSLESS if the result is M4A."""
+async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> str:
+    """Download a track; returns the source format detected before any quality retry."""
     stream = await tidal_client.get_track_stream(track_id, quality="LOSSLESS")
     await dash_downloader.download_flac(stream, tmp_path)
+
+    source_fmt = tagger.detect_audio_detail(tmp_path)
 
     if tagger.detect_format(tmp_path) == "m4a":
         tmp_retry = tmp_path.with_suffix(".hires.tmp")
@@ -122,9 +125,11 @@ async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> None:
         except Exception:
             tmp_retry.unlink(missing_ok=True)
 
+    return source_fmt
+
 
 async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue):
-    async def emit(status: str, track_num=None, total=None, title=None, error=None, fmt=None):
+    async def emit(status: str, track_num=None, total=None, title=None, error=None, fmt=None, source_fmt=None):
         await queue.put({
             "job_id": job_id,
             "status": status,
@@ -133,6 +138,7 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
             "track_title": title,
             "error": error,
             "format": fmt,
+            "source_format": source_fmt,
         })
 
     try:
@@ -215,9 +221,10 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                     # Use SpotiFLAC FLAC when available, otherwise Tidal proxy
                     sf_file = spotiflac_flac.get(tidal_track.track_number)
                     if sf_file and sf_file.exists() and tagger.detect_format(sf_file) == "flac":
+                        source_fmt = tagger.detect_audio_detail(sf_file)
                         shutil.copy2(str(sf_file), str(tmp_path))
                     else:
-                        await _download_track_prefer_flac(tidal_track.id, tmp_path)
+                        source_fmt = await _download_track_prefer_flac(tidal_track.id, tmp_path)
 
                     await emit("tagging", track_num=idx, total=total, title=track_title)
 
@@ -254,7 +261,7 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                     dest = album_folder / filename
                     file_manager.move_file(tmp_path, dest)
 
-                    await emit("done", track_num=idx, total=total, title=track_title, fmt=ext)
+                    await emit("done", track_num=idx, total=total, title=track_title, fmt=ext, source_fmt=source_fmt)
 
                 except Exception as e:
                     await emit("error", track_num=idx, total=total, title=track_title, error=str(e))

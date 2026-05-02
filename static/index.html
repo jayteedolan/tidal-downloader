@@ -398,9 +398,17 @@
                 <span class="track-title" x-text="t.title"></span>
                 <span class="status-icon" :class="statusClass(t.status)"
                       x-text="statusIcon(t.status)"></span>
-                <span x-show="t.format" class="format-badge"
-                      :class="t.format === 'flac-hires' ? 'format-hires' : t.format === 'flac' ? 'format-flac' : 'format-aac'"
-                      x-text="t.format === 'flac-hires' ? 'HI-RES' : t.format === 'flac' ? 'FLAC' : 'AAC'"></span>
+                <template x-if="t.format">
+                  <span style="display:inline-flex;align-items:center;gap:4px">
+                    <template x-if="t.source_fmt && t.source_fmt !== t.format">
+                      <span style="display:inline-flex;align-items:center;gap:4px">
+                        <span class="format-badge" :class="fmtClass(t.source_fmt)" x-text="fmtLabel(t.source_fmt)"></span>
+                        <span style="color:var(--text-muted);font-size:0.7rem">→</span>
+                      </span>
+                    </template>
+                    <span class="format-badge" :class="fmtClass(t.format)" x-text="fmtLabel(t.format)"></span>
+                  </span>
+                </template>
                 <span x-show="t.error" class="text-sm"
                       style="color:var(--red)" x-text="t.error"></span>
               </div>

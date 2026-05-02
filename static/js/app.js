@@ -83,6 +83,14 @@ function musicApp() {
       return 'badge-flac';
     },
 
+    fmtLabel(f) {
+      return { 'flac-hires': 'HI-RES', flac: 'FLAC', m4a: 'AAC' }[f] ?? f?.toUpperCase() ?? '';
+    },
+
+    fmtClass(f) {
+      return { 'flac-hires': 'format-hires', flac: 'format-flac', m4a: 'format-aac' }[f] ?? 'format-flac';
+    },
+
     statusIcon(s) {
       return {
         queued: '○',
@@ -451,6 +459,8 @@ function musicApp() {
         title: t.title,
         status: 'queued',
         error: null,
+        format: null,
+        source_fmt: null,
       }));
     },
 
@@ -618,6 +628,7 @@ function musicApp() {
             status: 'queued',
             error: null,
             format: null,
+            source_fmt: null,
           });
           idx = this.trackStatuses.length - 1;
         }
@@ -625,6 +636,7 @@ function musicApp() {
         if (msg.error) this.trackStatuses[idx].error = msg.error;
         if (msg.track_title) this.trackStatuses[idx].title = msg.track_title;
         if (msg.format) this.trackStatuses[idx].format = msg.format;
+        if (msg.source_format) this.trackStatuses[idx].source_fmt = msg.source_format;
       }
     },
 
