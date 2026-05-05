@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import shutil
 import tempfile
 import uuid
@@ -86,6 +87,47 @@ def _write_lrc_from_flac(flac_path: Path) -> None:
         pass
 
 
+async def _poll_spotiflac_dir(output_dir: Path, emit, done_event: asyncio.Event, total: int = 0) -> None:
+    """
+    Poll `output_dir` every 2 s while SpotiFLAC runs in a thread.
+    Emits a 'downloading' progress event for each new .flac file that appears,
+    using the track number parsed from the filename (e.g. "03 Title - Artist.flac" → 3).
+    Stops when `done_event` is set.
+    """
+    seen: set[Path] = set()
+    while not done_event.is_set():
+        await asyncio.sleep(2.0)
+        try:
+            current = set(output_dir.rglob("*.flac"))
+        except Exception:
+            continue
+        new_files = sorted(current - seen)
+        for f in new_files:
+            m = re.match(r"(\d+)", f.name)
+            track_num = int(m.group(1)) if m else (len(seen) + 1)
+            stem = f.stem
+            title = stem.split(" - ")[0].strip() if " - " in stem else stem
+            await emit("downloading", track_num=track_num, total=total or None, title=title)
+        seen = current
+
+
+async def _poll_spotiflac_count(output_dir: Path, emit, done_event: asyncio.Event, total: int) -> None:
+    """
+    Simpler variant for the hybrid path: emits a status-text update showing how
+    many tracks SpotiFLAC has downloaded so far without touching individual track rows.
+    """
+    last_count = -1
+    while not done_event.is_set():
+        await asyncio.sleep(2.0)
+        try:
+            count = len(list(output_dir.rglob("*.flac")))
+        except Exception:
+            continue
+        if count != last_count:
+            last_count = count
+            await emit("starting", title=f"SpotiFLAC: {count} / {total} tracks fetched…")
+
+
 async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
     """Download an album directly via SpotiFLAC when the Tidal proxy is unavailable."""
     if req.new_folder_name:
@@ -97,10 +139,20 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
     await emit("downloading", title="Connecting to SpotiFLAC (trying Tidal, then Qobuz)…")
 
     with tempfile.TemporaryDirectory(prefix="sf_") as tmpdir:
-        await emit("downloading", title="Downloading via SpotiFLAC — this may take a minute…")
-        flac_files = await spotiflac_service.download_album(
-            req.spotify_url, Path(tmpdir), spotify_token=settings.spotify_token
+        sf_dir = Path(tmpdir)
+
+        # Run SpotiFLAC in a thread while polling the output dir for per-track progress
+        done_event = asyncio.Event()
+        poll_task = asyncio.create_task(
+            _poll_spotiflac_dir(sf_dir, emit, done_event)
         )
+        try:
+            flac_files = await spotiflac_service.download_album(
+                req.spotify_url, sf_dir, spotify_token=settings.spotify_token
+            )
+        finally:
+            done_event.set()
+            await poll_task
 
         if not flac_files:
             raise RuntimeError("SpotiFLAC returned no files — all Tidal and Qobuz sources failed")
@@ -115,18 +167,18 @@ async def _run_spotiflac_only(req: DownloadRequest, emit) -> None:
 
         total = len(sorted_tracks)
 
-        await emit("downloading", title=f"Moving {total} track{'s' if total != 1 else ''} to library…")
-        for idx, (track_num, src_path) in enumerate(sorted_tracks, start=1):
+        # Move phase: polling already showed "downloading"; now emit tagging → done
+        for track_num, src_path in sorted_tracks:
             stem = src_path.stem
             # SpotiFLAC names files "TITLE - ARTISTS"; strip the artist suffix
             title = stem.split(" - ")[0].strip() if " - " in stem else stem
-            await emit("downloading", track_num=idx, total=total, title=title)
+            await emit("tagging", track_num=track_num, total=total, title=title)
             source_fmt = tagger.detect_audio_detail(src_path)
             dest = album_folder / src_path.name
             file_manager.move_file(src_path, dest)
             _write_lrc_from_flac(dest)
             fmt = tagger.detect_audio_detail(dest)
-            await emit("done", track_num=idx, total=total, title=title, fmt=fmt, source_fmt=source_fmt)
+            await emit("done", track_num=track_num, total=total, title=title, fmt=fmt, source_fmt=source_fmt)
 
 
 async def _download_track_prefer_flac(track_id: int, tmp_path: Path) -> str:
@@ -228,9 +280,18 @@ async def _run_download(job_id: str, req: DownloadRequest, queue: asyncio.Queue)
                        title="Checking for lossless source…")
             spotify_url = await spotiflac_service.get_spotify_url(req.tidal_album_id)
             if spotify_url:
-                spotiflac_flac = await spotiflac_service.download_album(
-                    spotify_url, sf_tmpdir, spotify_token=settings.spotify_token
+                await emit("starting", title=f"SpotiFLAC: 0 / {total} tracks fetched…")
+                sf_done = asyncio.Event()
+                sf_poll = asyncio.create_task(
+                    _poll_spotiflac_count(sf_tmpdir, emit, sf_done, total=total)
                 )
+                try:
+                    spotiflac_flac = await spotiflac_service.download_album(
+                        spotify_url, sf_tmpdir, spotify_token=settings.spotify_token
+                    )
+                finally:
+                    sf_done.set()
+                    await sf_poll
         except Exception as sf_exc:
             logger.warning("SpotiFLAC pre-download failed: %s", sf_exc)
 
